@@ -1,4 +1,4 @@
-# Mandate of Heaven 天命 — Game Design Document (v0.1)
+# Mandate of Heaven 天命 — Game Design Document (v0.2)
 
 > *Working title.* A base-building RTS in the Command & Conquer tradition, set in a mythic
 > East Asia inspired by *Romance of the Three Kingdoms*: geomancers, clockwork oxen, elemental
@@ -80,7 +80,7 @@ flows to whoever builds, harmonises and holds the land.
 | Governor's Yamen 衙门 | 4×4 | (Caravan) | +20 | — | Construction yard, garrison archers |
 | Qi Shrine 风水坛 | 2×2 | 600 | +100 | Yamen | Power |
 | Garrison Camp 兵营 | 3×3 | 500 | −20 | Qi Shrine | Infantry |
-| Jade Refinery 玉坊 | 4×3 | 2000 | −30 | Qi Shrine | Refinery (+free Wooden Ox) |
+| Jade Refinery 玉坊 | 4×3 | 1800 | −30 | Qi Shrine | Refinery (+free Wooden Ox) |
 | Artificer Workshop 工坊 | 4×4 | 2000 | −40 | Refinery | Machines |
 | Jade Vault 玉库 | 1×1 | 150 | −5 | Refinery | Storage |
 | Arrow Tower 箭楼 | 1×1 | 500 | −10 | Garrison Camp | Defence |
@@ -92,7 +92,7 @@ flows to whoever builds, harmonises and holds the land.
 | Archer 弓手 | 150 | Garrison Camp | Ranged, hits air, tower garrison |
 | Daoist Initiate 道士 | 300 | Garrison Camp (+Qi Shrine) | Talisman splash, *Ward* ability |
 | Artificer 工匠 | 500 | Garrison Camp | Capture / repair (engineer) |
-| Wooden Ox 木牛 | 1400 | Workshop | Harvester |
+| Wooden Ox 木牛 | 1200 | Workshop (+Refinery) | Harvester |
 | Gliding Horse 流马 | 500 | Workshop | Fast clockwork scout |
 | Imperial Caravan 御辇 | 3000 | Workshop | MCV → deploys into Yamen |
 
@@ -142,12 +142,34 @@ Xian of Kunlun tier 4 (sketch): **Nine-Heavens Sword Array** (orbital strike of 
   story beats (Peach Garden Oath, Red Cliffs, Wuzhang Plains…), briefings as ink-painting scrolls.
 * **Multiplayer** — deterministic lockstep (see ARCHITECTURE.md), 2–8 players, replays.
 
-## 9. Milestones
+## 9. M1 prototype — what is in
+* **Map**: *Peach Garden Pass* (Peach Garden Valley biome), 64×64 cells of 3 m, two mirrored
+  start positions, a contested central jade field plus three fields per side, ponds, streams,
+  roads through the middle and both flanks, forested hills at the edges.
+* **Flow**: Imperial Caravan → deploy into the Yamen → Qi Shrine → Garrison Camp / Jade Refinery
+  → Artificer Workshop (more Wooden Oxen, a second Caravan) · Arrow Towers and walls on the
+  Defence tab. Units: Halberdier, Archer, Daoist Initiate (talisman splash), Wooden Ox.
+* **Economy**: Oxen seek the nearest field with enough jade, harvest, return to the nearest
+  refinery; fields regrow slowly. Low Qi halves production and disables towers.
+* **Mandate**: each standing structure adds `mandatePerMin` × Harmony. The first power,
+  **Heaven's Wrath** (100 Mandate, 45 s recharge): the storm gathers for 1.6 s, then lightning
+  strikes a 2.2-cell radius (260 damage, ×0.45 vs structures — anti-army, not a base-killer).
+* **Harmony**: listed adjacencies raise it (e.g. Garrison Camp beside the Yamen); isolated
+  structures in a base of 3+ lower it. The placement ghost previews it.
+* **AI**: builds the same order a player would (power → barracks → refinery → workshop →
+  second refinery, towers when threatened), keeps its harvesters busy, masses infantry and
+  attacks in growing waves, and casts Heaven's Wrath on your densest group. Normal thinks twice
+  as often, attacks sooner (≈2:50 vs 4:30) and with larger waves. It runs *inside* the simulation, issuing the same commands as the player.
+* **Design check (builders vs rushers)**: tier-1 infantry deal ×0.15–0.2 to fortified structures,
+  towers out-trade infantry, structures self-repair after 12 s, and Mandate only comes from
+  buildings — an early rush on a Yamen with towers stalls.
+
+## 10. Milestones
 | # | Milestone | Content |
 |---|---|---|
-| **M0** | **Foundation + first assets** *(this drop)* | Portable engine skeleton, asset pipeline, 17 tier-1 assets, viewer/diorama |
-| M1 | Playable prototype | Caravan deploy, sidebar build/place, harvesting loop, Qi & Mandate, infantry combat, skirmish AI (easy), one map |
-| M2 | Tier 1 complete | Workshop, Caravan, Artificer, Gliding Horse, Vault; garrison, walls drag-place, fog of war |
+| M0 | Foundation + first assets ✓ | Portable engine skeleton, asset pipeline, 17 tier-1 assets, viewer/diorama |
+| **M1** | **Playable prototype ✓** *(this drop)* | Caravan deploy, sidebar build/place, harvesting loop, Qi & Mandate, Heaven's Wrath, infantry combat, skirmish AI (Easy/Normal), one map |
+| M2 | Tier 1 complete + art pass | Artificer, Gliding Horse, Vault; garrison, walls drag-place, fog of war, sound; detailed humanoids, more building variety, richer spell/super-weapon VFX |
 | M3 | Tier 2 + Xian tier 1 | Elementalists, siege, second faction |
 | M4 | Multiplayer alpha | Lockstep netcode, lobby, replays |
 | M5 | Tiers 3–4, super-weapons | |

@@ -37,8 +37,8 @@ void main() {
   float mid = fbm(xz * 0.18 + 5.0);
   float fine = vnoise(xz * 2.5);
   float blades = vnoise(xz * vec2(14.0, 9.0) + vnoise(xz * 3.0) * 2.0);
-  vec3 grassA = srgb(vec3(0.27, 0.37, 0.16));
-  vec3 grassB = srgb(vec3(0.35, 0.43, 0.2));
+  vec3 grassA = srgb(vec3(0.26, 0.35, 0.17));
+  vec3 grassB = srgb(vec3(0.34, 0.405, 0.21));
   vec3 grassC = srgb(vec3(0.19, 0.30, 0.14));
   vec3 grass = mix(grassC, mix(grassA, grassB, smoothstep(0.35, 0.7, mid)), smoothstep(0.25, 0.65, big));
   grass *= 0.86 + 0.18 * fine + 0.1 * blades;
@@ -58,8 +58,12 @@ void main() {
   float slope = 1.0 - N.y;
   float rockW = max(vSplat.b, smoothstep(0.28, 0.45, slope + (mid - 0.5) * 0.15));
   // noisy splat boundaries look hand-painted instead of blurry
-  float dirtW = smoothstep(0.35, 0.65, vSplat.g + (fine - 0.5) * 0.35);
-  float sandW = smoothstep(0.35, 0.65, vExtra.b + (fine - 0.5) * 0.3);
+  // edge noise on a rotated domain, two octaves: breaks up the value-noise lattice so the
+  // boundaries don't read as square blocks up close
+  vec2 re = mat2(0.8, -0.6, 0.6, 0.8) * xz;
+  float edgeN = vnoise(re * 1.1 + 3.0) * 0.6 + vnoise(re * 3.7 - 5.0) * 0.4;
+  float dirtW = smoothstep(0.38, 0.62, vSplat.g + (edgeN - 0.5) * 0.4);
+  float sandW = smoothstep(0.35, 0.65, vExtra.b + (edgeN - 0.5) * 0.3);
   float jadeW = smoothstep(0.3, 0.7, vSplat.a + (mid - 0.5) * 0.3);
 
   vec3 albedo = grass;
@@ -89,8 +93,12 @@ void main() {
     col += srgb(vec3(0.3, 1.0, 0.65)) * vein * jadeW * (0.6 + 0.4 * sin(frame.cameraPos.w * 1.5 + xz.x));
   }
 
+  // out-of-bounds skirt (hills beyond the playable map): dimmed + desaturated
+  float oob = vExtra.a;
+  col = mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))), oob * 0.3) * (1.0 - 0.5 * oob);
+
   // build grid overlay
-  if (frame.grid.y > 0.0) {
+  if (frame.grid.y > 0.0 && oob < 0.01) {
     vec2 g = abs(fract(xz / frame.grid.x + 0.5) - 0.5) * frame.grid.x;
     float line = 1.0 - smoothstep(0.0, 0.06, min(g.x, g.y));
     col = mix(col, vec3(0.9, 0.95, 1.0), line * frame.grid.y);

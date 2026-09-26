@@ -122,7 +122,7 @@ export class Game {
     this.cam.yaw = 0;
     this.cam.pitch = 52 * DEG;
     this.cam.fov = 30 * DEG;
-    this.cam.distance = 74;
+    this.cam.distance = 82;
     this.cam.minDist = 30;
     this.cam.maxDist = 125;
     this.cam.target = [this.wx(st.cx * LEPTONS + 128), 0, this.wz(st.cz * LEPTONS + 128) - 4];

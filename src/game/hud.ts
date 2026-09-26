@@ -241,7 +241,7 @@ export class Hud {
 
     // ---- sidebar frame (lacquered wood + gold trim)
     const [sx, , sw] = L.side;
-    ui.gradient(sx, 0, sw, H, LACQUER2, LACQUER, 0.97, 0.97);
+    ui.gradient(sx, 0, sw, H, LACQUER2, LACQUER, 1, 1);
     for (let yy = 0; yy < H; yy += 7 * s) ui.rect(sx, yy, sw, 1, 0x000000, 0.08 + 0.05 * Math.sin(yy * 0.05));
     ui.rect(sx, 0, 2 * s, H, GOLD, 0.9);
     ui.rect(sx + 3 * s, 0, 1 * s, H, 0x000000, 0.6);
@@ -299,7 +299,7 @@ export class Hud {
     const affordable = mand >= pw.mandateCost;
     const ready = charge <= 0 && affordable;
     ui.gradient(px, py, ppw, pph, ready ? 0x3a4a7a : 0x2a2230, ready ? 0x1a2240 : 0x181218, 1);
-    if (charge > 0) ui.pie(px + ppw / 2, py + pph / 2, ppw, 0, Math.PI * 2 * charge, 0x000000, 0.55);
+    if (charge > 0) ui.wipe(px, py, ppw, pph, Math.PI * 2 * (1 - charge), Math.PI * 2, 0x000000, 0.6);
     ui.text('天罚', px + 6 * s, py + 6 * s, 'cjk20', ready ? 0xcfe0ff : MUTED);
     ui.text("Heaven's", px + 48 * s, py + 7 * s, 'ui12', ready ? INK : MUTED);
     ui.text('Wrath', px + 48 * s, py + 21 * s, 'ui12', ready ? INK : MUTED);
@@ -378,7 +378,7 @@ export class Hud {
     if (head && head.typeId === t.id) {
       const frac = head.progress / (t.buildTicks * 100);
       // clock-wipe: remaining portion darkened
-      ui.pie(x + w / 2, y + h / 2, Math.hypot(w, h) / 2, Math.PI * 2 * frac, Math.PI * 2, 0x000000, 0.55);
+      ui.wipe(x, y, w, h, Math.PI * 2 * frac, Math.PI * 2, 0x000000, 0.55);
       ui.text(`${Math.floor(frac * 100)}%`, x + 6 * s, y + 4 * s, 'ui14', INK);
     } else if (queued.length) ui.rect(x, y, w, h, 0x000000, 0.35);
     if (queued.length > 1 || (queued.length === 1 && t.kind === 'unit' && head?.typeId !== t.id)) {

@@ -100,6 +100,18 @@ await G(`for (const id of ['azure_halberdier','azure_halberdier','azure_archer',
 await ff(40);
 await G(`g.jumpHome(); g.cam.distance = 50;`);
 await shot('05_base');
+if (process.env.FULL) {
+  // a fuller tier-1 base for the README hero shot
+  await G(`g.player().jade += 6000;`);
+  await place('azure_workshop', -6, 2);
+  await place('azure_arrow_tower', 3, -4);
+  await place('azure_arrow_tower', 7, 4);
+  await place('azure_qi_shrine', -4, -4);
+  await G(`for (const id of ['azure_wooden_ox']) g.issue({ t: 'queue', typeId: id });`);
+  await ff(30);
+  await G(`g.selection = new Set(); g.jumpHome(); g.cam.distance = 96; g.cam.target[0] -= 3;`);
+  await shot('05b_base_wide');
+}
 // select all combat units and send them toward the enemy with attack-move
 await G(`g.selection = new Set(g.world.unitsOf(g.me).filter(u => g.world.utype(u).weapon).map(u => u.id));`);
 await shot('06_selected');

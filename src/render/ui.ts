@@ -142,6 +142,22 @@ export class UIRenderer {
     }
     this.poly(pts, c, a);
   }
+  /** Clock-wipe sector clipped to a rectangle (build progress on cameos / buttons). Angles clockwise from 12 o'clock. */
+  wipe(x: number, y: number, w: number, h: number, a0: number, a1: number, c: number, a = 1) {
+    if (a1 - a0 <= 1e-4) return;
+    const hw = w / 2, hh = h / 2, cx = x + hw, cy = y + hh;
+    const k = Math.atan2(hw, hh);
+    const angles = new Set<number>([a0, a1]);
+    for (const t of [k, Math.PI - k, Math.PI + k, Math.PI * 2 - k]) if (t > a0 && t < a1) angles.add(t);
+    for (let i = 1; i < 32; i++) angles.add(a0 + ((a1 - a0) * i) / 32);
+    const pts = [cx, cy];
+    for (const t of [...angles].sort((p, q) => p - q)) {
+      const sx = Math.sin(t), sy = -Math.cos(t);
+      const f = Math.min(Math.abs(sx) > 1e-6 ? hw / Math.abs(sx) : Infinity, Math.abs(sy) > 1e-6 ? hh / Math.abs(sy) : Infinity);
+      pts.push(cx + sx * f, cy + sy * f);
+    }
+    this.poly(pts, c, a);
+  }
   /** Thick arc (rings, gauges). */
   arc(cx: number, cy: number, r: number, width: number, a0: number, a1: number, c: number, a = 1) {
     const seg = Math.max(2, Math.ceil((Math.abs(a1 - a0) / (Math.PI * 2)) * 64));

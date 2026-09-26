@@ -5,8 +5,8 @@ Target today: **browser / WebGL2**. Targets later: **iOS, macOS, Windows, Linux*
 *implementation of an interface*, not a rewrite.
 
 ```
- ┌──────────────────────── apps (viewer today; game client, editor later) ───────────────────────┐
- │  src/apps/*            — only layer allowed to wire platform + renderer + sim together        │
+ ┌──────────────────────── apps (game + viewer today; editor later) ─────────────────────────────┐
+ │  src/apps/*  + src/game (client: camera, selection, orders, HUD, VFX) — wire it all together  │
  ├──────────────┬──────────────────────┬──────────────────────┬──────────────────────────────────┤
  │  src/sim     │  src/render          │  src/assets          │  src/platform                    │
  │  determin-   │  Renderer, camera,   │  glTF loader →       │  Platform interface              │
@@ -25,18 +25,40 @@ Target today: **browser / WebGL2**. Targets later: **iOS, macOS, Windows, Linux*
 ```
 
 ## Rules that keep it portable
-1. **No DOM / browser API outside `src/platform/web/`** (the viewer app's dev-tool UI is the only
-   exception and is not part of the game). The in-game UI (sidebar, cameos) will be drawn by the
-   renderer, not HTML, so it ports as-is.
+1. **No DOM / browser API outside `src/platform/web/`** (the app entry points' boot/error overlay
+   and the viewer's dev-tool panel are the only exceptions). The in-game UI — sidebar, cameos,
+   minimap, messages, title and game-over screens — is drawn by the renderer (`render/ui.ts`),
+   not HTML, so it ports as-is. Text uses a glyph atlas the platform rasterises
+   (`Platform.rasterizeGlyphs`: canvas on the web, CoreText / DirectWrite / FreeType natively).
 2. **The renderer only talks to the RHI** (`src/render/rhi/types.ts`), never to WebGL.
-3. **The simulation is deterministic**: Q16.16 fixed-point (`src/sim/fixed.ts`), its own PRNG,
-   fixed tick (15 Hz), no floats in sim state, no `Math.random`, no wall-clock. Rendering
+3. **The simulation is deterministic**: integer state only (positions in *leptons*, 256 per
+   3 m cell; 256-step facings with an integer trig table; integer `isqrt`; Q16.16 helpers in
+   `sim/fixed.ts`), its own PRNG, a fixed 15 Hz tick, no `Math.random`, no wall-clock. Rendering
    interpolates between ticks in floats. This gives lockstep multiplayer + replays, and lets a
-   native port be verified bit-for-bit against golden replays.
+   native port be verified bit-for-bit against golden replays (`World.hash()`; `tests/sim.test.ts`
+   runs full AI-vs-AI matches twice and requires identical hash sequences).
 4. **Content is data** (`content/*.json`): stats, costs, prerequisites, tiers. No gameplay numbers
    in code.
 5. **Assets are standard glTF 2.0**; engine-specific bits live in `extras` so the files still
    open in Blender or any viewer.
+
+## Simulation (`src/sim`)
+* `World` owns every entity (units, structures, jade nodes, projectiles) and players' economy,
+  production queues (one per sidebar tab, C&C *ready → place*), Qi, Mandate, Harmony and powers.
+* **Input is a command stream**: the client (and the AI) call `issue(player, command)`; commands
+  are applied at the start of the next tick. A lockstep layer only has to agree on this stream;
+  a replay is the stream plus the seed.
+* **Output is state + events** (`world.events`: shots, hits, deaths, construction, alerts…). The
+  client turns events into VFX, messages and audio cues; it never mutates sim state.
+* **Pathfinding**: 8-connected A* on the cell grid (no corner cutting, deterministic
+  tie-breaking); units re-path periodically and when their route is blocked. **Skirmish AI** (`sim/ai.ts`) runs inside the tick and only issues
+  commands, so it is deterministic and costs nothing to replay.
+
+## Game client (`src/game`)
+`Game` runs the fixed-tick accumulator, interpolates positions for rendering, builds the scene
+(instances, overlay decals, particles), handles input (selection, contextual orders, placement,
+hotkeys, camera) and draws the HUD. Everything it draws goes through the renderer; everything it
+reads from the OS goes through `Platform` — so a native host reuses it unchanged.
 
 ## RHI (Render Hardware Interface)
 Modelled on the explicit APIs, so the native backends are thin:
@@ -85,5 +107,8 @@ texture read with `texelFetch` (supported everywhere).
   (Dawn/wgpu → Metal/Vulkan/D3D12) is the natural second RHI implementation.
 
 ## Frame (current renderer)
-`shadow depth (2048², PCF) → main HDR pass, 4×MSAA [terrain → instanced meshes → sky → water] →
-resolve → dual-filter bloom (5 levels) → ACES tonemap + grade + vignette → backbuffer`.
+`shadow depth (2048², PCF) → main HDR pass, 4×MSAA [terrain → instanced meshes → sky → water →
+ground decals (selection, placement grid, range rings) → particles (alpha + additive)] → resolve →
+dual-filter bloom (5 levels) → ACES tonemap + grade + vignette + flash → UI batch (sidebar,
+cameos, text) → backbuffer`. Cameos are rendered once into offscreen targets with the same
+pipeline (`Renderer.render(view, outputTexture)`).
