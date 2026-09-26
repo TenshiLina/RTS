@@ -27,7 +27,10 @@ const programs: { name: string; vert: string; frag: string; defines?: Record<str
   { name: 'overlay', vert: 'overlay.vert', frag: 'overlay.frag' },
   { name: 'particles-alpha', vert: 'particle.vert', frag: 'particle.frag' },
   { name: 'particles-add', vert: 'particle.vert', frag: 'particle.frag', defines: { ADDITIVE: 1 } },
+  { name: 'particles-distort', vert: 'particle.vert', frag: 'particle.frag', defines: { DISTORT: 1 } },
   { name: 'ui', vert: 'ui.vert', frag: 'ui.frag' },
+  { name: 'fxmesh', vert: 'fxmesh.vert', frag: 'fxmesh.frag' },
+  { name: 'fxmesh-add', vert: 'fxmesh.vert', frag: 'fxmesh.frag', defines: { ADDITIVE: 1 } },
 ];
 
 const glslangInit = require('@webgpu/glslang');

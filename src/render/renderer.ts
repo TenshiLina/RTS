@@ -1,7 +1,8 @@
 // Scene renderer. Talks only to the RHI (render/rhi/types.ts) — never to WebGL directly — so the
 // same code drives every backend.
 //
-// Frame:  shadow depth → main HDR (MSAA) [sky, terrain, meshes, water] → resolve → bloom → composite
+// Frame:  shadow depth → main HDR (MSAA) [terrain, meshes, sky, water, decals, FX meshes, particles]
+//         → resolve → distortion (heat haze / air) → bloom → composite
 
 import type { Device, Pipeline, Buffer, Texture, Sampler, VertexBufferLayout, BindGroupLayout, PipelineDesc, RenderPass, BindGroup } from './rhi/types';
 import { SHADERS } from './shaders';
@@ -20,6 +21,7 @@ interface RenderTargets {
   msaaColor: Texture;
   msaaDepth: Texture;
   hdr: Texture;
+  distort: Texture;
   bloom: Texture[];
 }
 
@@ -43,6 +45,31 @@ export interface RenderInstance {
   highlight?: number;
   /** object-space Y above which geometry is clipped (construction animation). Infinity = built. */
   buildClip?: number;
+  /** elemental status 0..1: frost, wet, burning, charred */
+  status?: [number, number, number, number];
+}
+
+export interface PointLight {
+  pos: V3;
+  radius: number;
+  color: [number, number, number];
+  intensity: number;
+}
+export interface Gust {
+  x: number;
+  z: number;
+  radius: number;
+  /** metres of sway at the centre; negative = swirl (whirlwinds) */
+  strength: number;
+}
+/** Textures shared with effect renderers (particles, FX meshes). */
+export interface FxEnv {
+  height: Texture;
+  groundFx: Texture;
+  time: number;
+}
+export interface FxLayer {
+  draw(pass: RenderPass, frameGroup: BindGroup, env: FxEnv): void;
 }
 
 export interface Lighting {
@@ -107,14 +134,22 @@ export interface SceneView {
   clearColor?: [number, number, number];
   /** world-space decals: footprints, selection rings, order markers */
   overlay?: { draw(pass: RenderPass, frameGroup: BindGroup): void } | null;
-  /** billboard particles / ribbons (VFX) */
-  particles?: { draw(pass: RenderPass, frameGroup: BindGroup): void } | null;
+  /** procedural 3D effect meshes (ice, waves, funnels) */
+  fxMeshes?: FxLayer | null;
+  /** billboard particles / ribbons (VFX); drawDistortion renders screen-space offsets */
+  particles?: (FxLayer & { drawDistortion?(pass: RenderPass, frameGroup: BindGroup, env: FxEnv): boolean }) | null;
   /** full-screen flash (lightning), 0..1 */
   flash?: number;
+  lights?: PointLight[];
+  gusts?: Gust[];
+  /** ground-effects map (scorch, frost, wet, heat) covering terrain.rect */
+  groundFx?: Texture | null;
 }
 
-const INSTANCE_FLOATS = 20;
-const FRAME_UBO_SIZE = 4 * 16 * 4 + 16 * (11 + 8);
+const INSTANCE_FLOATS = 24;
+const MAX_LIGHTS = 16;
+const MAX_GUSTS = 4;
+const FRAME_UBO_SIZE = 4 * 16 * 4 + 16 * (11 + 8) + 16 * (2 + MAX_GUSTS + MAX_LIGHTS * 2);
 
 export const MESH_VERTEX_LAYOUT: VertexBufferLayout = {
   arrayStride: MESH_VERTEX_STRIDE,
@@ -137,6 +172,7 @@ const INSTANCE_LAYOUT: VertexBufferLayout = {
     { location: 10, format: 'float32x4', offset: 32 },
     { location: 11, format: 'float32x4', offset: 48 },
     { location: 12, format: 'float32x4', offset: 64 },
+    { location: 13, format: 'float32x4', offset: 80 },
   ],
 };
 const FRAME_GROUP: BindGroupLayout = { entries: [{ binding: 0, kind: 'uniform', name: 'FrameUniforms' }] };
@@ -144,6 +180,7 @@ const MESH_GROUP: BindGroupLayout = {
   entries: [
     { binding: 0, kind: 'texture', name: 'uJoints' },
     { binding: 1, kind: 'texture', name: 'uShadow' },
+    { binding: 2, kind: 'texture', name: 'uFxMap' },
   ],
 };
 
@@ -188,6 +225,9 @@ export class Renderer {
   private nearestClamp: Sampler;
   private hdrFormat: 'rgba16float' | 'rgba8unorm';
   private samples: number;
+  /** 1×1 fallbacks when a view has no terrain / ground-FX map */
+  private blankFx: Texture;
+  private lowHeight: Texture;
   stats = { drawCalls: 0, triangles: 0, instances: 0 };
 
   constructor(public device: Device, opts: { samples?: number; shadowSize?: number } = {}) {
@@ -204,6 +244,8 @@ export class Renderer {
     this.shadowSampler = device.createSampler({ filter: 'linear', compare: 'lequal', wrap: 'clamp' });
     this.linearClamp = device.createSampler({ filter: 'linear', wrap: 'clamp' });
     this.nearestClamp = device.createSampler({ filter: 'nearest', wrap: 'clamp' });
+    this.blankFx = device.createTexture({ width: 1, height: 1, format: 'rgba8unorm', data: new Uint8Array(4), label: 'blank-fx' });
+    this.lowHeight = device.createTexture({ width: 1, height: 1, format: 'r16float', data: new Uint16Array([0xfbff]), label: 'low-height' });
     this.createPipelines();
   }
 
@@ -257,7 +299,7 @@ export class Renderer {
         label: 'water',
         shader: { label: 'water', vertex: SHADERS.waterVert, fragment: SHADERS.waterFrag },
         vertexBuffers: [{ arrayStride: 12, attributes: [{ location: 0, format: 'float32x3', offset: 0 }] }],
-        bindGroups: [FRAME_GROUP, { entries: [{ binding: 0, kind: 'uniform', name: 'WaterUniforms' }, { binding: 1, kind: 'texture', name: 'uShadow' }, { binding: 2, kind: 'texture', name: 'uHeight' }] }],
+        bindGroups: [FRAME_GROUP, { entries: [{ binding: 0, kind: 'uniform', name: 'WaterUniforms' }, { binding: 1, kind: 'texture', name: 'uShadow' }, { binding: 2, kind: 'texture', name: 'uHeight' }, { binding: 3, kind: 'texture', name: 'uFxMap' }] }],
         blend: 'alpha',
         depthWrite: false,
         cullMode: 'none',
@@ -288,7 +330,7 @@ export class Renderer {
         label: 'composite',
         shader: { label: 'composite', vertex: SHADERS.fullscreenVert, fragment: SHADERS.compositeFrag },
         vertexBuffers: [],
-        bindGroups: [{ entries: [{ binding: 0, kind: 'uniform', name: 'CompositeUniforms' }, { binding: 1, kind: 'texture', name: 'uHDR' }, { binding: 2, kind: 'texture', name: 'uBloom' }] }],
+        bindGroups: [{ entries: [{ binding: 0, kind: 'uniform', name: 'CompositeUniforms' }, { binding: 1, kind: 'texture', name: 'uHDR' }, { binding: 2, kind: 'texture', name: 'uBloom' }, { binding: 3, kind: 'texture', name: 'uDistort' }] }],
         colorFormats: ['rgba8unorm'],
         depthTest: false,
         depthWrite: false,
@@ -327,7 +369,7 @@ export class Renderer {
       // backbuffer resized: free the previous backbuffer-sized set
       for (const [k, t] of this.targetCache) {
         if (t.persistent) continue;
-        [t.msaaColor, t.msaaDepth, t.hdr, ...t.bloom].forEach((x) => x.destroy());
+        [t.msaaColor, t.msaaDepth, t.hdr, t.distort, ...t.bloom].forEach((x) => x.destroy());
         this.targetCache.delete(k);
         (d as any).invalidateFramebuffers?.();
       }
@@ -344,6 +386,7 @@ export class Renderer {
       msaaColor: d.createTexture({ width: w, height: h, format: this.hdrFormat, sampleCount: this.samples, renderTarget: true, label: 'msaa-color' }),
       msaaDepth: d.createTexture({ width: w, height: h, format: 'depth24', sampleCount: this.samples, renderTarget: true, label: 'msaa-depth' }),
       hdr: d.createTexture({ width: w, height: h, format: this.hdrFormat, renderTarget: true, label: 'hdr' }),
+      distort: d.createTexture({ width: Math.max(1, w >> 1), height: Math.max(1, h >> 1), format: this.hdrFormat, renderTarget: true, label: 'distort' }),
       bloom,
     };
     this.targetCache.set(key, t);
@@ -386,6 +429,30 @@ export class Renderer {
     v4(view.grid?.cell ?? 3, view.grid?.opacity ?? 0, 0, 0);
     const teams = view.teamColors ?? [0x2f6fd0, 0xc8322b, 0x2e9e5b, 0xe0a82e, 0x7a4bc2, 0xd9d2c0, 0x30b0c0, 0xe06a2e];
     for (let i = 0; i < 8; i++) col(teams[i % teams.length], 1);
+    const tr = view.terrain?.rect ?? [0, 0, 0, 0];
+    v4(tr[0], tr[1], tr[2], tr[3]);
+    // lights nearest the camera focus win when there are too many
+    const tgt = view.camera.target;
+    const lights = (view.lights ?? []).length > MAX_LIGHTS
+      ? [...view.lights!].sort((a, b) => Math.hypot(a.pos[0] - tgt[0], a.pos[2] - tgt[2]) - Math.hypot(b.pos[0] - tgt[0], b.pos[2] - tgt[2])).slice(0, MAX_LIGHTS)
+      : view.lights ?? [];
+    const gusts = (view.gusts ?? []).slice(0, MAX_GUSTS);
+    v4(lights.length, gusts.length, 0, 0);
+    for (let i = 0; i < MAX_GUSTS; i++) {
+      const g = gusts[i];
+      if (g) v4(g.x, g.z, g.radius, g.strength);
+      else v4(0, 0, 1, 0);
+    }
+    for (let i = 0; i < MAX_LIGHTS; i++) {
+      const l = lights[i];
+      if (l) {
+        v4(l.pos[0], l.pos[1], l.pos[2], l.radius);
+        v4(l.color[0] * l.intensity, l.color[1] * l.intensity, l.color[2] * l.intensity, 0);
+      } else {
+        v4(0, -1000, 0, 0.001);
+        v4(0, 0, 0, 0);
+      }
+    }
     d.writeBuffer(this.frameUBO, 0, f);
   }
 
@@ -459,6 +526,11 @@ export class Renderer {
         this.instData[o + 17] = row;
         this.instData[o + 18] = inst.highlight ?? 0;
         this.instData[o + 19] = inst.buildClip ?? 1e6;
+        const st = inst.status;
+        this.instData[o + 20] = st ? st[0] : 0;
+        this.instData[o + 21] = st ? st[1] : 0;
+        this.instData[o + 22] = st ? st[2] : 0;
+        this.instData[o + 23] = st ? st[3] : 0;
         n++;
       }
       draws.push({ model, first, count: n - first });
@@ -499,9 +571,11 @@ export class Renderer {
         color: [{ texture: tg.msaaColor, resolveTarget: tg.hdr, load: 'clear', clearColor: [cc[0], cc[1], cc[2], 1] }],
         depth: { texture: tg.msaaDepth, load: 'clear', clearDepth: 1 },
       });
+      const fxTex = view.groundFx ?? this.blankFx;
       const meshGroup = (p: Pipeline) => d.createBindGroup(p, 1, [
         { binding: 0, texture: this.jointTex, sampler: this.nearestClamp },
         { binding: 1, texture: this.shadowMap, sampler: this.shadowSampler },
+        { binding: 2, texture: fxTex, sampler: this.linearClamp },
       ]);
       if (view.terrain) {
         pass.setPipeline(this.pipes.terrain);
@@ -537,14 +611,21 @@ export class Renderer {
         pass.setBindGroup(1, d.createBindGroup(this.pipes.water, 1, [
           { binding: 0, buffer: this.arena.buffer, offset: u.offset, size: u.size },
           { binding: 1, texture: this.shadowMap, sampler: this.shadowSampler },
-          { binding: 2, texture: w.heightTex, sampler: this.linearClamp },
+          { binding: 2, texture: view.terrain.heightTex, sampler: this.linearClamp },
+          { binding: 3, texture: fxTex, sampler: this.linearClamp },
         ]));
         pass.setVertexBuffer(0, w.vb);
         pass.draw(w.vertexCount);
       }
+      const env: FxEnv = { height: view.terrain?.heightTex ?? this.lowHeight, groundFx: fxTex, time: view.time };
       if (view.overlay) view.overlay.draw(pass, this.frameGroupAny());
-      if (view.particles) view.particles.draw(pass, this.frameGroupAny());
+      if (view.fxMeshes) view.fxMeshes.draw(pass, this.frameGroupAny(), env);
+      if (view.particles) view.particles.draw(pass, this.frameGroupAny(), env);
       pass.end();
+      // screen-space distortion offsets (half res): heat haze, air blades, shock rings
+      const dp = d.beginRenderPass({ label: 'distort', color: [{ texture: tg.distort, load: 'clear', clearColor: [0, 0, 0, 0] }] });
+      view.particles?.drawDistortion?.(dp, this.frameGroupAny(), env);
+      dp.end();
     }
 
     // ---- bloom
@@ -573,6 +654,7 @@ export class Renderer {
         { binding: 0, buffer: this.arena.buffer, offset: u.offset, size: u.size },
         { binding: 1, texture: tg.hdr, sampler: this.linearClamp },
         { binding: 2, texture: B[0], sampler: this.linearClamp },
+        { binding: 3, texture: tg.distort, sampler: this.linearClamp },
       ]));
       pass.draw(3);
       pass.end();

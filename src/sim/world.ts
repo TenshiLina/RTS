@@ -5,6 +5,7 @@
 import type { Content, UnitType, StructureType, Tab, WeaponType, EntityType, PowerType } from './content';
 import { LEPTONS, TICK_HZ, isqrt, dist2, facingOf, turnToward, SimRng, facingDelta } from './intmath';
 import { Pathfinder } from './pathfind';
+import { Magic } from './magic';
 import { CELL, BLOCKS_MOVE } from '../world/skirmishMap';
 
 export interface MapInput {
@@ -19,7 +20,8 @@ export type Order =
   | { type: 'move'; x: number; z: number; attackMove: boolean }
   | { type: 'attack'; target: number }
   | { type: 'harvest'; node: number }
-  | { type: 'deploy' };
+  | { type: 'deploy' }
+  | { type: 'cast'; x: number; z: number };
 
 export type EntityKind = 'unit' | 'structure' | 'jade' | 'projectile';
 export type HarvestState = 'seek' | 'toNode' | 'harvest' | 'toDock' | 'unload' | 'wait';
@@ -50,6 +52,23 @@ export class Entity {
   stuckCheckZ = 0;
   repathTick = 0;
   deployTimer = 0;
+  // elemental status + casting (see magic.ts)
+  burnTicks = 0;
+  burnDps = 0;
+  burnOwner = -1;
+  chillTicks = 0;
+  chillPct = 0;
+  frozenTicks = 0;
+  wetTicks = 0;
+  liftTicks = 0;
+  liftZone = 0;
+  kbX = 0;
+  kbZ = 0;
+  kbTicks = 0;
+  spellCd = 0;
+  castTicks = 0;
+  castX = 0;
+  castZ = 0;
   // harvester
   cargo = 0;
   hState: HarvestState = 'seek';
@@ -122,7 +141,8 @@ export type Command =
   | { t: 'place'; typeId: string; cx: number; cz: number }
   | { t: 'sell'; id: number }
   | { t: 'power'; power: string; x: number; z: number }
-  | { t: 'rally'; id: number; x: number; z: number };
+  | { t: 'rally'; id: number; x: number; z: number }
+  | { t: 'cast'; ids: number[]; x: number; z: number };
 
 export type SimEvent =
   | { e: 'spawn'; id: number }
@@ -146,7 +166,21 @@ export type SimEvent =
   | { e: 'powerStrike'; player: number; power: string; x: number; z: number; radius: number }
   | { e: 'sold'; id: number; player: number }
   | { e: 'defeat'; player: number }
-  | { e: 'victory'; team: number };
+  | { e: 'victory'; team: number }
+  // elemental magic
+  | { e: 'castStart'; id: number; spell: string; x: number; z: number; ticks: number }
+  | { e: 'spell'; id: number; spell: string; zone: number; x: number; z: number; tx: number; tz: number }
+  | { e: 'spike'; zone: number; i: number; x: number; z: number }
+  | { e: 'freeze'; id: number }
+  | { e: 'unfreeze'; id: number }
+  | { e: 'thaw'; id: number }
+  | { e: 'douse'; id: number }
+  | { e: 'lift'; id: number; zone: number }
+  | { e: 'drop'; id: number }
+  | { e: 'extinguish'; zone: number; x: number; z: number; r: number }
+  | { e: 'fireWhirl'; zone: number }
+  | { e: 'zoneEnd'; zone: number }
+  | { e: 'shock'; id: number; x: number; z: number };
 
 export const TAB_ORDER: Tab[] = ['structures', 'defense', 'infantry', 'machines'];
 const cellOf = (l: number) => Math.floor(l / LEPTONS);
@@ -173,6 +207,7 @@ export class World {
   private strikes: { player: number; power: PowerType; x: number; z: number; at: number }[] = [];
   /** optional per-player controllers (skirmish AI) — run inside the tick, deterministic */
   controllers: ((w: World, p: PlayerState) => void)[] = [];
+  magic = new Magic(this);
 
   constructor(public content: Content, public map: MapInput, setups: PlayerSetup[], seed = 1) {
     const n = map.cells * map.cells;
@@ -498,6 +533,16 @@ export class World {
         this.events.push({ e: 'powerCast', player: pid, power: pw.id, x: c.x, z: c.z, delay: pw.delayTicks });
         break;
       }
+      case 'cast': {
+        for (const u of mine(c.ids)) {
+          const sp = this.utype(u).spell;
+          if (!sp || u.spellCd > 0 || u.frozenTicks > 0 || u.liftTicks > 0) continue;
+          u.order = { type: 'cast', x: c.x, z: c.z };
+          u.targetId = 0;
+          u.repathTick = 0;
+        }
+        break;
+      }
       case 'rally': {
         const s = this.get(c.id);
         if (s && s.owner === pid && s.kind === 'structure') {
@@ -601,7 +646,7 @@ export class World {
     const want = facingOf(dx, dz);
     u.facing = turnToward(u.facing, want, t.turnRate);
     if (t.category === 'vehicle' && Math.abs(facingDelta(u.facing, want)) > 28) return; // turn in place first
-    const step = t.speed;
+    const step = u.chillTicks > 0 ? Math.max(1, Math.floor((t.speed * (100 - u.chillPct)) / 100)) : t.speed;
     if (d <= step) {
       u.x = wx;
       u.z = wz;
@@ -881,8 +926,12 @@ export class World {
           if (d2 > r2) continue;
           const falloff = e.id === p.targetId ? 100 : 100 - Math.floor((isqrt(d2) * 50) / w.splash);
           this.damage(e, Math.floor((w.damage * falloff) / 100), w.vs, p.owner, p.srcId);
+          if (e.alive && (e.id === p.targetId || falloff >= 70)) this.magic.applyOnHit(e, w.onHit, p.owner, p.x - dx, p.z - dz);
         }
-      } else if (t) this.damage(t, w.damage, w.vs, p.owner, p.srcId);
+      } else if (t) {
+        this.damage(t, w.damage, w.vs, p.owner, p.srcId);
+        if (t.alive) this.magic.applyOnHit(t, w.onHit, p.owner, p.x - dx, p.z - dz);
+      }
       return;
     }
     p.x += Math.trunc((dx * w.projSpeed) / d);
@@ -1180,8 +1229,11 @@ export class World {
           }
           continue;
         }
+        if (this.magic.unitStatus(e)) continue; // frozen, lifted, knocked back or casting
         if (t.harvester) this.updateHarvester(e, t);
-        if (t.weapon) this.updateCombat(e, t);
+        if (t.spell) this.magic.think(e, t);
+        if (e.castTicks > 0) continue;
+        if (t.weapon && e.order.type !== 'cast') this.updateCombat(e, t);
         this.stepMovement(e, t);
       } else if (e.kind === 'projectile') {
         this.updateProjectile(e);
@@ -1189,6 +1241,7 @@ export class World {
         if (this.tick % 30 === e.id % 30 && e.amount < e.maxAmount) e.amount = Math.min(e.maxAmount, e.amount + Math.max(1, Math.floor(this.content.rules.jadeRegrowPerMin / 30)));
       }
     }
+    this.magic.tick();
     this.separation();
 
     // mandate powers
@@ -1202,7 +1255,12 @@ export class World {
         if (!e.alive || (e.kind !== 'unit' && e.kind !== 'structure')) continue;
         const d2 = this.distTo2(s.x, s.z, e);
         if (d2 > r2) continue;
-        const fall = 100 - Math.floor((isqrt(d2) * 50) / s.power.radius);
+        let fall = 100 - Math.floor((isqrt(d2) * 50) / s.power.radius);
+        // lightning through wet targets: bonus damage (and arcs, client side)
+        if (e.kind === 'unit' && e.wetTicks > 0) {
+          fall += Math.floor((fall * this.content.rules.reactions.wetLightningBonusPct) / 100);
+          this.events.push({ e: 'shock', id: e.id, x: e.x, z: e.z });
+        }
         this.damage(e, Math.floor((s.power.damage * fall) / 100), s.power.vs, s.player, 0);
       }
     }
@@ -1242,7 +1300,9 @@ export class World {
     for (const e of this.entities) {
       if (!e.alive) continue;
       mix(e.id); mix(e.x); mix(e.z); mix(e.hp); mix(e.facing); mix(e.cargo); mix(e.amount);
+      if (e.kind === 'unit') { mix(e.burnTicks); mix(e.chillTicks); mix(e.frozenTicks); mix(e.wetTicks); mix(e.liftTicks); mix(e.spellCd); mix(e.castTicks); }
     }
+    this.magic.hashInto(mix);
     for (const p of this.players) {
       mix(p.jade); mix(p.mandateMilli); mix(p.harmony);
       for (const t of TAB_ORDER) for (const it of p.queues[t].items) mix(it.progress);

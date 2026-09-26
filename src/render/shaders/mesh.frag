@@ -9,8 +9,10 @@ layout(location = 4) in vec4 vMat;
 layout(location = 5) in vec4 vExtra;
 layout(location = 6) in vec3 vObjPos;
 layout(location = 7) flat in vec4 vInst;
+layout(location = 8) flat in vec4 vStatus;
 
 layout(set = 1, binding = 1) uniform sampler2DShadow uShadow;
+layout(set = 1, binding = 2) uniform sampler2D uFxMap;
 
 layout(location = 0) out vec4 outColor;
 
@@ -193,8 +195,36 @@ void main() {
   float metal = vMat.y;
   float ao = vExtra.x;
 
+  // ---- elemental status (per instance) + ground effects creeping up from below
+  vec4 gfx = texture(uFxMap, terrainUV(vWorldPos.xz));
+  float low = smoothstep(1.1, 0.0, vObjPos.y);
+  float frost = max(vStatus.x, gfx.g * low * 0.9);
+  float wet = max(vStatus.y, gfx.b * smoothstep(0.5, 0.0, vObjPos.y) * 0.8);
+  float charW = max(vStatus.w, gfx.r * smoothstep(0.6, 0.0, vObjPos.y) * 0.7);
+  float frostPat = smoothstep(0.35, 0.65, vnoise(vObjPos.xz * 9.0 + vObjPos.y * 6.0) * 0.6 + frost * 0.7);
+  albedo = mix(albedo, vec3(0.62, 0.78, 0.92), frost * frostPat);
+  rough = mix(rough, 0.22, frost * frostPat);
+  metal *= 1.0 - frost;
+  albedo *= mix(1.0, 0.58, wet);
+  rough = mix(rough, 0.14, wet);
+  albedo = mix(albedo, vec3(0.035, 0.03, 0.028), charW * 0.85);
+
   float shadow = sampleShadow(uShadow, vWorldPos, N);
   vec3 col = shadeSurface(albedo, rough, metal, N, V, ao, shadow);
+  col += albedo * pointLights(vWorldPos, N) * ao;
+  if (frost > 0.01) {
+    float rimF = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+    col += vec3(0.35, 0.65, 1.0) * rimF * frost * 0.9;
+    float glint = step(0.992, hash13(floor(vWorldPos * 22.0) + floor(frame.cameraPos.w * 3.0)));
+    col += vec3(2.0, 2.3, 2.6) * glint * frost * frostPat;
+  }
+  if (vStatus.z > 0.01) {
+    // burning: embers crawl over the surface, lit from the flames below
+    float n = vnoise(vObjPos.xz * 7.0 + vec2(0.0, vObjPos.y * 9.0 - frame.cameraPos.w * 3.0));
+    float ember = smoothstep(0.55, 0.9, n) * vStatus.z;
+    col += vec3(2.6, 0.75, 0.12) * ember * (0.7 + 0.3 * sin(frame.cameraPos.w * 13.0 + vObjPos.y * 5.0));
+    col += vec3(1.0, 0.42, 0.1) * vStatus.z * 0.35 * smoothstep(1.6, 0.0, vObjPos.y);
+  }
 
   // foliage translucency: light bleeding through leaves when backlit
   if (pat == 8) {

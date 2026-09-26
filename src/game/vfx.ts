@@ -2,7 +2,10 @@
 // Math.random freely — never feeds back into the deterministic sim).
 
 import { ParticleSystem, FX } from '../render/particles';
-import type { V3 } from '../core/math';
+import type { FxMeshRenderer, FxMeshInstance } from '../render/fxMeshes';
+import type { GroundFx } from '../render/groundFx';
+import type { PointLight, Gust } from '../render/renderer';
+import type { V3, M4 } from '../core/math';
 
 const R = Math.random;
 const rr = (a: number, b: number) => a + (b - a) * R();
@@ -21,13 +24,54 @@ const JADE: [number, number, number, number] = [0.35, 1, 0.65, 1];
 const QI: [number, number, number, number] = [0.5, 0.88, 1, 1];
 const STORM: [number, number, number, number] = [0.6, 0.75, 1, 1];
 
+/** A dynamic light owned by an effect. */
+export interface LightFx {
+  pos: V3;
+  color: [number, number, number];
+  intensity: number;
+  radius: number;
+  life: number;
+  age: number;
+  /** 0 = steady, 1 = strong fire flicker */
+  flicker: number;
+  /** seconds to reach full intensity */
+  attack: number;
+  follow?: () => V3 | null;
+}
+export interface GustFx {
+  x: number;
+  z: number;
+  radius: number;
+  strength: number;
+  life: number;
+  age: number;
+  follow?: () => [number, number] | null;
+}
+/** A 3D effect mesh driven by a per-frame callback that sets its transform and fade. */
+export interface MeshFx {
+  mesh: number;
+  mat: number;
+  color: [number, number, number, number];
+  life: number;
+  age: number;
+  seed: number;
+  matrix: M4;
+  fade: number;
+  update: (m: MeshFx, dt: number) => void;
+}
+
 export class VFX {
   flash = 0;
+  lights: LightFx[] = [];
+  gusts: GustFx[] = [];
+  meshes: MeshFx[] = [];
   private timers: { t: number; fn: () => void }[] = [];
-  constructor(public ps: ParticleSystem) {}
+  private scripts: { age: number; life: number; fn: (k: number, dt: number, age: number) => boolean | void }[] = [];
+  constructor(public ps: ParticleSystem, public fxm: FxMeshRenderer, public ground: GroundFx) {}
 
   update(dt: number) {
     this.ps.update(dt);
+    this.ground.update(dt);
     this.flash = Math.max(0, this.flash - dt * 2.4);
     for (let i = this.timers.length - 1; i >= 0; i--) {
       if ((this.timers[i].t -= dt) <= 0) {
@@ -35,9 +79,78 @@ export class VFX {
         this.timers.splice(i, 1);
       }
     }
+    this.scripts = this.scripts.filter((s) => {
+      s.age += dt;
+      const k = Math.min(1, s.age / s.life);
+      return s.fn(k, dt, s.age) !== false && s.age < s.life;
+    });
+    this.lights = this.lights.filter((l) => {
+      l.age += dt;
+      if (l.follow) {
+        const p = l.follow();
+        if (!p) return false;
+        l.pos = p;
+      }
+      return l.age < l.life;
+    });
+    this.gusts = this.gusts.filter((g) => {
+      g.age += dt;
+      if (g.follow) {
+        const p = g.follow();
+        if (!p) return false;
+        [g.x, g.z] = p;
+      }
+      return g.age < g.life;
+    });
+    this.meshes = this.meshes.filter((m) => {
+      m.age += dt;
+      if (m.age >= m.life) return false;
+      m.update(m, dt);
+      return true;
+    });
   }
-  private later(seconds: number, fn: () => void) {
+  later(seconds: number, fn: () => void) {
     this.timers.push({ t: seconds, fn });
+  }
+  /** Run fn every frame for `life` seconds with k = normalised time (0..1). Return false to stop. */
+  run(life: number, fn: (k: number, dt: number, age: number) => boolean | void) {
+    this.scripts.push({ age: 0, life, fn });
+  }
+  light(pos: V3, color: [number, number, number], intensity: number, radius: number, life: number, opts: { flicker?: number; attack?: number; follow?: () => V3 | null } = {}) {
+    const l: LightFx = { pos, color, intensity, radius, life, age: 0, flicker: opts.flicker ?? 0, attack: opts.attack ?? 0.05, follow: opts.follow };
+    this.lights.push(l);
+    return l;
+  }
+  gust(x: number, z: number, radius: number, strength: number, life: number, follow?: () => [number, number] | null) {
+    const g: GustFx = { x, z, radius, strength, life, age: 0, follow };
+    this.gusts.push(g);
+    return g;
+  }
+  mesh(mesh: number, mat: number, color: [number, number, number, number], life: number, update: (m: MeshFx, dt: number) => void) {
+    const m: MeshFx = { mesh, mat, color, life, age: 0, seed: R(), matrix: new Float32Array(16) as unknown as M4, fade: 1, update };
+    update(m, 0);
+    this.meshes.push(m);
+    return m;
+  }
+
+  /** Scene inputs for the renderer this frame. */
+  sceneLights(time: number): PointLight[] {
+    return this.lights.map((l) => {
+      const k = l.age / l.life;
+      const env = Math.min(1, l.age / Math.max(0.001, l.attack)) * (k > 0.7 ? (1 - k) / 0.3 : 1);
+      const fl = l.flicker ? 1 - l.flicker * 0.45 * (0.5 + 0.5 * Math.sin(time * 23 + l.pos[0] * 3) * Math.sin(time * 17.3 + l.pos[2])) : 1;
+      return { pos: l.pos, radius: l.radius, color: l.color, intensity: l.intensity * env * fl };
+    });
+  }
+  sceneGusts(): Gust[] {
+    return this.gusts.map((g) => {
+      const k = g.age / g.life;
+      const env = Math.min(1, g.age / 0.15) * (k > 0.6 ? (1 - k) / 0.4 : 1);
+      return { x: g.x, z: g.z, radius: g.radius, strength: g.strength * env };
+    });
+  }
+  meshInstances(): FxMeshInstance[] {
+    return this.meshes.map((m) => ({ mesh: m.mesh, mat: m.mat, matrix: m.matrix, color: m.color, age: m.age, fade: m.fade, seed: m.seed }));
   }
 
   // ---------------------------------------------------------------- combat

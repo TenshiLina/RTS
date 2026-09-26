@@ -8,13 +8,15 @@ import { halberdier, archer, daoist } from './infantry';
 import { woodenOx } from './woodenOx';
 import { caravan } from './caravan';
 import { workshop } from './workshop';
+import { academy } from './academy';
+import { fireAdept, iceAdept, waterAdept, airAdept } from './adepts';
 import { pine, bamboo, peachTree, rock, scholarRock, jadeSmall, jadeLarge } from './environment';
 
 export const RECIPES: Recipe[] = [
   // structures
-  commandHall, qiShrine, barracks, refinery, workshop, arrowTower, wall,
+  commandHall, qiShrine, barracks, refinery, workshop, academy, arrowTower, wall,
   // units
-  halberdier, archer, daoist, woodenOx, caravan,
+  halberdier, archer, daoist, fireAdept, iceAdept, waterAdept, airAdept, woodenOx, caravan,
   // resources
   jadeSmall, jadeLarge,
   // environment

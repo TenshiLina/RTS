@@ -7,9 +7,11 @@ import type { Renderer, RenderInstance, GpuModel, Camera } from '../render/rende
 import { DEFAULT_LIGHTING } from '../render/renderer';
 import { OverlayBatch } from '../render/overlay';
 import { ParticleSystem } from '../render/particles';
+import { FxMeshRenderer } from '../render/fxMeshes';
+import { GroundFx } from '../render/groundFx';
 import { UIRenderer } from '../render/ui';
 import { OrbitCamera, screenRay } from '../render/camera';
-import { buildTerrainGpu, TerrainGpu } from '../render/terrainRenderer';
+import { buildTerrainGpu, destroyTerrainGpu, TerrainGpu } from '../render/terrainRenderer';
 import { Content } from '../sim/content';
 import { World, Entity, SimEvent, PlayerState, TAB_ORDER } from '../sim/world';
 import { createSkirmishAI, Difficulty } from '../sim/ai';
@@ -70,6 +72,8 @@ export class Game {
   terrainGpu: TerrainGpu;
   overlay: OverlayBatch;
   particles: ParticleSystem;
+  fxMeshes: FxMeshRenderer;
+  groundFx: GroundFx;
   vfx: VFX;
   ui: UIRenderer;
   hud: Hud;
@@ -114,7 +118,10 @@ export class Game {
     this.terrainGpu = buildTerrainGpu(renderer.device, this.terrain);
     this.overlay = new OverlayBatch(renderer.device, renderer);
     this.particles = new ParticleSystem(renderer.device, renderer);
-    this.vfx = new VFX(this.particles);
+    this.particles.heightAt = (x, z) => this.h(x, z);
+    this.fxMeshes = new FxMeshRenderer(renderer.device, renderer);
+    this.groundFx = new GroundFx(renderer.device, this.terrainGpu.rect);
+    this.vfx = new VFX(this.particles, this.fxMeshes, this.groundFx);
     this.ui = new UIRenderer(renderer.device);
     this.hud = new Hud(this);
     // camera over our caravan
@@ -197,6 +204,7 @@ export class Game {
     if (this.terrainDirty) {
       this.terrainDirty = false;
       computeTerrainAO(this.terrain);
+      destroyTerrainGpu(this.terrainGpu);
       this.terrainGpu = buildTerrainGpu(this.renderer.device, this.terrain);
     }
     if (!this.freezeFx) {
@@ -799,6 +807,7 @@ export class Game {
     this.buildOverlay();
     const instances = this.buildScene();
     this.particles.build(this.camera.view);
+    this.fxMeshes.instances = this.vfx.meshInstances();
     this.renderer.render({
       camera: this.camera,
       instances,
@@ -808,6 +817,10 @@ export class Game {
       teamColors: [...TEAM_PALETTE, 0xd9d2c0, TEAM_COLORS.ivory, 0x30b0c0, 0xe06a2e],
       overlay: this.overlay,
       particles: this.particles,
+      fxMeshes: this.fxMeshes,
+      groundFx: this.groundFx.tex,
+      lights: this.vfx.sceneLights(this.time),
+      gusts: this.vfx.sceneGusts(),
       flash: this.vfx.flash * this.vfx.flash * 0.28,
       grid: this.mode.kind === 'place' ? { cell: 3, opacity: 0.09 } : undefined,
     });

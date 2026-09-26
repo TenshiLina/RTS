@@ -224,6 +224,43 @@
       ]
     },
     {
+      "id": "azure_academy",
+      "name": "Five Elements Academy",
+      "hanzi": "五行书院",
+      "tier": 1,
+      "role": "tech",
+      "model": "azure_academy",
+      "footprint": [
+        4,
+        4
+      ],
+      "cost": 1500,
+      "buildTime": 18,
+      "qi": -30,
+      "hp": 1300,
+      "armor": "structure",
+      "prereqs": [
+        "azure_barracks",
+        "azure_qi_shrine"
+      ],
+      "sidebarTab": "structures",
+      "mandatePerMin": 4,
+      "harmony": {
+        "adjacentTo": [
+          "azure_qi_shrine",
+          "azure_command_hall"
+        ],
+        "bonus": {
+          "mandate": 0.1
+        }
+      },
+      "exit": [
+        0,
+        7.2
+      ],
+      "description": "Round hall where adepts of Fire, Ice, Water and Air are trained. A tier-2 building pulled forward in the prototype so the schools can be judged."
+    },
+    {
       "id": "azure_granary",
       "name": "Jade Vault",
       "hanzi": "玉库",
@@ -548,6 +585,282 @@
       ],
       "description": "Mobile court. Deploys into a Governor's Yamen.",
       "radius": 2.2
+    },
+    {
+      "id": "azure_fire_adept",
+      "name": "Fire Adept",
+      "hanzi": "火术士",
+      "tier": 1,
+      "school": "fire",
+      "category": "infantry",
+      "model": "azure_fire_adept",
+      "cost": 450,
+      "buildTime": 11,
+      "hp": 105,
+      "armor": "light",
+      "speed": 1.3,
+      "sight": 7,
+      "producedAt": [
+        "azure_academy"
+      ],
+      "prereqs": [
+        "azure_academy"
+      ],
+      "sidebarTab": "infantry",
+      "weapon": {
+        "damage": 20,
+        "rof": 1.7,
+        "range": 5,
+        "projectile": "fire",
+        "splash": 0.55,
+        "vs": {
+          "light": 1.0,
+          "medium": 0.8,
+          "heavy": 0.5,
+          "fortified": 0.3,
+          "structure": 0.4,
+          "spirit": 1.0
+        },
+        "onHit": {
+          "burn": {
+            "dps": 7,
+            "seconds": 3
+          }
+        }
+      },
+      "spell": {
+        "id": "wildfire",
+        "name": "Wildfire",
+        "hanzi": "燎原",
+        "cooldown": 24,
+        "range": 7,
+        "radius": 2.2,
+        "castTime": 0.7,
+        "duration": 6,
+        "damage": 30,
+        "dps": 13,
+        "minTargets": 3,
+        "vs": {
+          "light": 1.0,
+          "medium": 0.8,
+          "heavy": 0.5,
+          "fortified": 0.25,
+          "structure": 0.45,
+          "spirit": 1.0
+        },
+        "description": "Fire races out of the ground into a ring of flame; the area burns for 6 s."
+      },
+      "abilities": [
+        "cast_wildfire"
+      ],
+      "description": "Hurls a writhing fire serpent that sets its target alight. Wildfire turns an area into burning ground."
+    },
+    {
+      "id": "azure_ice_adept",
+      "name": "Ice Adept",
+      "hanzi": "冰术士",
+      "tier": 1,
+      "school": "ice",
+      "category": "infantry",
+      "model": "azure_ice_adept",
+      "cost": 450,
+      "buildTime": 11,
+      "hp": 115,
+      "armor": "light",
+      "speed": 1.25,
+      "sight": 7,
+      "producedAt": [
+        "azure_academy"
+      ],
+      "prereqs": [
+        "azure_academy"
+      ],
+      "sidebarTab": "infantry",
+      "weapon": {
+        "damage": 18,
+        "rof": 1.8,
+        "range": 5.5,
+        "projectile": "frost",
+        "vs": {
+          "light": 1.0,
+          "medium": 0.8,
+          "heavy": 0.5,
+          "fortified": 0.25,
+          "structure": 0.3,
+          "spirit": 1.0
+        },
+        "onHit": {
+          "chill": {
+            "slow": 0.35,
+            "seconds": 3
+          },
+          "freezeIfWet": 2.0
+        }
+      },
+      "spell": {
+        "id": "glacier",
+        "name": "Glacier Spikes",
+        "hanzi": "冰封",
+        "cooldown": 22,
+        "range": 7.5,
+        "length": 7,
+        "width": 1.0,
+        "count": 9,
+        "interval": 0.07,
+        "castTime": 0.6,
+        "damage": 38,
+        "freeze": 2.5,
+        "linger": 3,
+        "minTargets": 2,
+        "vs": {
+          "light": 1.0,
+          "medium": 0.8,
+          "heavy": 0.5,
+          "fortified": 0.25,
+          "structure": 0.3,
+          "spirit": 1.0
+        },
+        "description": "Spikes erupt in sequence along a line and freeze enemies solid; water beneath freezes."
+      },
+      "abilities": [
+        "cast_glacier"
+      ],
+      "description": "Flings crystal lances that chill (−35% speed); wet targets freeze solid. Glacier Spikes freeze a whole line."
+    },
+    {
+      "id": "azure_water_adept",
+      "name": "Water Adept",
+      "hanzi": "水术士",
+      "tier": 1,
+      "school": "water",
+      "category": "infantry",
+      "model": "azure_water_adept",
+      "cost": 400,
+      "buildTime": 10,
+      "hp": 120,
+      "armor": "light",
+      "speed": 1.35,
+      "sight": 7,
+      "producedAt": [
+        "azure_academy"
+      ],
+      "prereqs": [
+        "azure_academy"
+      ],
+      "sidebarTab": "infantry",
+      "weapon": {
+        "damage": 15,
+        "rof": 1.3,
+        "range": 4,
+        "projectile": "water",
+        "vs": {
+          "light": 1.0,
+          "medium": 0.8,
+          "heavy": 0.6,
+          "fortified": 0.25,
+          "structure": 0.3,
+          "spirit": 1.0
+        },
+        "onHit": {
+          "wet": 8,
+          "knockback": 0.35
+        }
+      },
+      "spell": {
+        "id": "surge",
+        "name": "Tidal Surge",
+        "hanzi": "怒涛",
+        "cooldown": 20,
+        "range": 6,
+        "length": 6.5,
+        "width": 3.2,
+        "speed": 7,
+        "castTime": 0.6,
+        "damage": 32,
+        "knockback": 1.6,
+        "wet": 10,
+        "minTargets": 2,
+        "vs": {
+          "light": 1.0,
+          "medium": 0.8,
+          "heavy": 0.5,
+          "fortified": 0.25,
+          "structure": 0.3,
+          "spirit": 1.0
+        },
+        "description": "A wave rolls forward, knocking enemies back and soaking them; it puts out fires."
+      },
+      "abilities": [
+        "cast_surge"
+      ],
+      "description": "Lashes with a water whip that soaks (wet targets freeze and conduct lightning). Tidal Surge knocks back and douses fire."
+    },
+    {
+      "id": "azure_air_adept",
+      "name": "Air Adept",
+      "hanzi": "风术士",
+      "tier": 1,
+      "school": "air",
+      "category": "infantry",
+      "model": "azure_air_adept",
+      "cost": 450,
+      "buildTime": 11,
+      "hp": 100,
+      "armor": "light",
+      "speed": 1.5,
+      "sight": 8,
+      "producedAt": [
+        "azure_academy"
+      ],
+      "prereqs": [
+        "azure_academy"
+      ],
+      "sidebarTab": "infantry",
+      "weapon": {
+        "damage": 16,
+        "rof": 1.1,
+        "range": 5.5,
+        "projectile": "gale",
+        "vs": {
+          "light": 1.0,
+          "medium": 0.8,
+          "heavy": 0.4,
+          "fortified": 0.25,
+          "structure": 0.3,
+          "spirit": 1.0
+        },
+        "onHit": {
+          "knockback": 0.25
+        }
+      },
+      "spell": {
+        "id": "whirlwind",
+        "name": "Whirlwind",
+        "hanzi": "旋风",
+        "cooldown": 24,
+        "range": 7,
+        "radius": 1.4,
+        "speed": 1.8,
+        "duration": 4.5,
+        "castTime": 0.6,
+        "damage": 26,
+        "dps": 6,
+        "lift": 1.5,
+        "minTargets": 2,
+        "vs": {
+          "light": 1.0,
+          "medium": 0.8,
+          "heavy": 0.5,
+          "fortified": 0.25,
+          "structure": 0.25,
+          "spirit": 1.0
+        },
+        "description": "A wandering funnel lifts and spins enemies before dropping them; through fire it becomes a fire whirl."
+      },
+      "abilities": [
+        "cast_whirlwind"
+      ],
+      "description": "Throws spinning gale blades that shove enemies. Whirlwind lifts whole squads off their feet."
     }
   ]
 }

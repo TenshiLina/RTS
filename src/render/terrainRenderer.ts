@@ -10,7 +10,18 @@ export interface TerrainGpu {
   ib: Buffer;
   indexCount: number;
   indexFormat: 'uint16' | 'uint32';
-  water: { vb: Buffer; vertexCount: number; heightTex: Texture; uniforms: Float32Array } | null;
+  /** r16f heights (also read by particles for soft edges) */
+  heightTex: Texture;
+  /** world rect covered by heightTex and the ground-FX map: origin xz, 1/size */
+  rect: [number, number, number, number];
+  water: { vb: Buffer; vertexCount: number; uniforms: Float32Array } | null;
+}
+
+export function destroyTerrainGpu(g: TerrainGpu) {
+  g.vb.destroy();
+  g.ib.destroy();
+  g.heightTex.destroy();
+  g.water?.vb.destroy();
 }
 
 function toHalf(v: number): number {
@@ -142,6 +153,14 @@ export function buildTerrainGpu(device: Device, t: TerrainData): TerrainGpu {
   const vb = device.createBuffer({ size: buf.byteLength, usage: 'vertex', data: new Uint8Array(buf), label: 'terrain' });
   const ib = device.createBuffer({ size: idx.byteLength, usage: 'index', data: idx, label: 'terrain-idx' });
 
+  const hdata = new Uint16Array(n);
+  for (let k = 0; k < n; k++) hdata[k] = toHalf(t.heights[k]);
+  const heightTex = device.createTexture({ width: t.vx, height: t.vz, format: 'r16float', data: hdata, label: 'heightmap' });
+  const sizeX = (t.vx - 1) * step, sizeZ = (t.vz - 1) * step;
+  // half-texel offset so texel centres line up with height samples
+  const ox = t.originX - step / 2, oz = t.originZ - step / 2;
+  const rect: TerrainGpu['rect'] = [ox, oz, 1 / (sizeX + step), 1 / (sizeZ + step)];
+
   let water: TerrainGpu['water'] = null;
   if (t.waterRects.length) {
     const y = t.waterLevel;
@@ -149,15 +168,9 @@ export function buildTerrainGpu(device: Device, t: TerrainData): TerrainGpu {
     for (const r of t.waterRects) v.push(r.x0, y, r.z0, r.x0, y, r.z1, r.x1, y, r.z1, r.x0, y, r.z0, r.x1, y, r.z1, r.x1, y, r.z0);
     const verts = new Float32Array(v);
     const wvb = device.createBuffer({ size: verts.byteLength, usage: 'vertex', data: verts, label: 'water' });
-    const hdata = new Uint16Array(n);
-    for (let k = 0; k < n; k++) hdata[k] = toHalf(t.heights[k]);
-    const heightTex = device.createTexture({ width: t.vx, height: t.vz, format: 'r16float', data: hdata, label: 'heightmap' });
-    const sizeX = (t.vx - 1) * step, sizeZ = (t.vz - 1) * step;
     const sh = hexToLinear(0x3aa6a0), dp = hexToLinear(0x1d4f6b);
-    // half-texel offset so texel centres line up with height samples
-    const ox = t.originX - step / 2, oz = t.originZ - step / 2;
-    const uniforms = new Float32Array([ox, oz, 1 / (sizeX + step), 1 / (sizeZ + step), sh[0], sh[1], sh[2], 0, dp[0], dp[1], dp[2], 0.9]);
-    water = { vb: wvb, vertexCount: verts.length / 3, heightTex, uniforms };
+    const uniforms = new Float32Array([...rect, sh[0], sh[1], sh[2], 0, dp[0], dp[1], dp[2], 0.9]);
+    water = { vb: wvb, vertexCount: verts.length / 3, uniforms };
   }
-  return { vb, ib, indexCount: q, indexFormat: big ? 'uint32' : 'uint16', water };
+  return { vb, ib, indexCount: q, indexFormat: big ? 'uint32' : 'uint16', heightTex, rect, water };
 }

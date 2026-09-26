@@ -7,6 +7,7 @@ layout(location = 2) in vec4 vSplat;
 layout(location = 3) in vec4 vExtra;
 
 layout(set = 1, binding = 1) uniform sampler2DShadow uShadow;
+layout(set = 1, binding = 2) uniform sampler2D uFxMap; // r = scorch, g = frost, b = wet, a = heat
 
 layout(location = 0) out vec4 outColor;
 
@@ -26,6 +27,8 @@ vec3 flowers(vec2 p, float density, inout float mask) {
   vec3 col = k < 0.2 ? srgb(vec3(0.9, 0.88, 0.82)) : k < 0.5 ? srgb(vec3(0.95, 0.78, 0.25)) : k < 0.8 ? srgb(vec3(0.92, 0.55, 0.7)) : srgb(vec3(0.6, 0.48, 0.88));
   return col;
 }
+
+float ridge(vec2 p) { return 1.0 - abs(vnoise(p) * 2.0 - 1.0); }
 
 void main() {
   vec2 xz = vWorldPos.xz;
@@ -84,8 +87,42 @@ void main() {
 
   float rough = mix(0.92, 0.75, rockW);
   float ao = vExtra.r;
+
+  // ---- ground effects left by magic (ground-FX map, see render/groundFx.ts)
+  vec4 gfx = texture(uFxMap, terrainUV(xz));
+  float t = frame.cameraPos.w;
+  // scorch: singed grass ring → charcoal with ash flecks
+  float charW = clamp(gfx.r * (0.8 + 0.4 * edgeN), 0.0, 1.0);
+  albedo = mix(albedo, srgb(vec3(0.33, 0.24, 0.1)), smoothstep(0.04, 0.3, gfx.r) * (1.0 - smoothstep(0.3, 0.65, charW)) * 0.8);
+  albedo = mix(albedo, srgb(vec3(0.05, 0.045, 0.04)), smoothstep(0.25, 0.8, charW));
+  albedo = mix(albedo, srgb(vec3(0.42, 0.4, 0.38)), step(0.94, hash12(floor(xz * 11.0))) * smoothstep(0.5, 0.9, charW));
+  rough = mix(rough, 0.98, charW);
+  // wet: darker and glossy; puddles in the wettest spots mirror the sky
+  float wet = gfx.b;
+  float puddle = smoothstep(0.5, 0.72, wet + (fbm(xz * 0.55 + 9.0) - 0.5) * 0.55);
+  albedo *= mix(1.0, 0.52, smoothstep(0.0, 0.5, wet));
+  albedo = mix(albedo, albedo * 0.6, puddle);
+  rough = mix(rough, 0.16, smoothstep(0.0, 0.6, wet));
+  rough = mix(rough, 0.03, puddle);
+  N = normalize(mix(N, vec3(0.0, 1.0, 0.0), puddle));
+  // frost: dendritic crystals creep in along ridged noise, full sheet where thick
+  float crystal = ridge(re * 5.0) * 0.65 + ridge(re * 13.0 + 4.0) * 0.35;
+  float thr = 1.0 - gfx.g * 1.7;
+  float frostW = smoothstep(thr, thr + 0.1, crystal * 0.75 + 0.25 * edgeN);
+  albedo = mix(albedo, srgb(vec3(0.8, 0.88, 0.95)), frostW);
+  rough = mix(rough, 0.3, frostW);
+
   float shadow = sampleShadow(uShadow, vWorldPos, N);
   vec3 col = shadeSurface(albedo, rough, 0.0, N, V, ao, shadow);
+  col += albedo * pointLights(vWorldPos, N) * ao;
+  // hoarfrost glints
+  float glint = step(0.985, hash12(floor(xz * 26.0) + floor(t * 2.5 + hash12(floor(xz * 26.0)) * 7.0)));
+  col += vec3(1.6, 1.9, 2.3) * glint * frostW * (0.4 + 0.6 * shadow);
+  // embers glowing in the cracks of scorched ground
+  float cracks = pow(ridge(re * 2.2 + 7.0), 7.0) + pow(ridge(re * 5.5 + 3.0), 9.0) * 0.6;
+  float heat = gfx.a;
+  float flick = 0.75 + 0.25 * sin(t * 7.0 + xz.x * 2.3 + xz.y * 1.7);
+  col += vec3(3.2, 0.95, 0.18) * heat * (cracks * 1.8 + 0.12 + 0.3 * vnoise(xz * 6.0 - t)) * flick;
 
   // jade glow veins
   if (jadeW > 0.01) {

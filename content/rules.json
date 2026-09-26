@@ -97,5 +97,13 @@
         "spirit": 1.2
       }
     }
-  ]
+  ],
+  "reactions": {
+    "description": "Elemental reactions: the schools change each other's results.",
+    "wetFreezeBonus": 0.6,
+    "wetLightningBonus": 0.5,
+    "fireWhirlDps": 16,
+    "fireThawsFrozen": true,
+    "waterDousesFire": true
+  }
 }

@@ -14,6 +14,7 @@ layout(location = 9) in vec4 iM1;
 layout(location = 10) in vec4 iM2;
 layout(location = 11) in vec4 iM3;
 layout(location = 12) in vec4 iParams; // x team, y joint row (-1 = static), z highlight, w build clip height (object space)
+layout(location = 13) in vec4 iStatus; // elemental status 0..1: frost, wet, burning, charred
 
 layout(set = 1, binding = 0) uniform sampler2D uJoints; // RGBA32F, 3 texels (rows of an affine 3x4) per joint
 
@@ -25,6 +26,7 @@ layout(location = 4) out vec4 vMat;
 layout(location = 5) out vec4 vExtra;
 layout(location = 6) out vec3 vObjPos;
 layout(location = 7) flat out vec4 vInst;
+layout(location = 8) flat out vec4 vStatus;
 
 void main() {
   mat4 model = mat4(iM0, iM1, iM2, iM3);
@@ -52,6 +54,7 @@ void main() {
   vExtra = aExtra;
   vObjPos = pos;
   vInst = iParams;
+  vStatus = iStatus;
 #ifdef SHADOW_PASS
   gl_Position = frame.shadowViewProj * world;
 #else

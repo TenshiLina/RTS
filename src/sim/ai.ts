@@ -22,6 +22,7 @@ const BUILD_ORDER = [
   'azure_jade_refinery',
   'azure_qi_shrine',
   'azure_workshop',
+  'azure_academy',
   'azure_arrow_tower',
   'azure_qi_shrine',
   'azure_jade_refinery',
@@ -32,7 +33,11 @@ const BUILD_ORDER = [
   'azure_qi_shrine',
   'azure_arrow_tower',
 ];
-const INFANTRY_MIX = ['azure_halberdier', 'azure_halberdier', 'azure_archer', 'azure_halberdier', 'azure_archer', 'azure_daoist'];
+// adepts need the Five Elements Academy; until then those slots fall back to halberdiers
+const INFANTRY_MIX = [
+  'azure_halberdier', 'azure_halberdier', 'azure_archer', 'azure_fire_adept', 'azure_halberdier', 'azure_archer',
+  'azure_ice_adept', 'azure_daoist', 'azure_water_adept', 'azure_halberdier', 'azure_air_adept', 'azure_archer',
+];
 
 export function createSkirmishAI(difficulty: Difficulty = 'easy') {
   const S: AIState = {

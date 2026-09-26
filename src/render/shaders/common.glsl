@@ -17,6 +17,10 @@ layout(set = 0, binding = 0) uniform FrameUniforms {
   vec4 viewport;       // xy = size in px, zw = 1/size
   vec4 grid;           // x = cell size, y = grid opacity, zw = unused
   vec4 teamColors[8];
+  vec4 terrainRect;    // heightmap + ground-FX map: xy = origin (world xz), zw = 1/size
+  vec4 lightInfo;      // x = point-light count, y = gust count
+  vec4 gusts[4];       // xy = centre (world xz), z = radius, w = strength (m; < 0 = swirl)
+  vec4 lights[32];     // 16 × { pos.xyz, radius } { rgb × intensity, - }
 } frame;
 
 const float PI = 3.14159265;
@@ -59,7 +63,42 @@ vec3 windOffset(vec3 worldPos, float sway) {
   float phase = dot(worldPos.xz, vec2(0.21, 0.17));
   float gust = 0.6 + 0.4 * sin(t * 0.37 + worldPos.x * 0.05);
   float w = (sin(t + phase) * 0.7 + sin(t * 2.3 + phase * 1.7) * 0.3) * gust;
-  return vec3(frame.wind.x, 0.0, frame.wind.y) * (w * frame.wind.z * sway);
+  vec3 off = vec3(frame.wind.x, 0.0, frame.wind.y) * (w * frame.wind.z * sway);
+  // local gusts from spells (whirlwinds, shockwaves): push outward, or swirl around the centre
+  int ng = int(frame.lightInfo.y);
+  for (int i = 0; i < 4; i++) {
+    if (i >= ng) break;
+    vec4 g = frame.gusts[i];
+    vec2 d = worldPos.xz - g.xy;
+    float dist = length(d);
+    float f = clamp(1.0 - dist / g.z, 0.0, 1.0);
+    vec2 dir = d / max(dist, 0.001);
+    if (g.w < 0.0) dir = normalize(vec2(-dir.y, dir.x) * 0.75 + dir * 0.25);
+    float flutter = 0.7 + 0.3 * sin(frame.cameraPos.w * 11.0 + phase * 5.0);
+    off.xz += dir * (abs(g.w) * f * f * flutter * sway);
+  }
+  return off;
+}
+
+// Dynamic point lights (fire, lightning, magic cores). Returns irradiance; multiply by albedo.
+vec3 pointLights(vec3 P, vec3 N) {
+  vec3 sum = vec3(0.0);
+  int n = int(frame.lightInfo.x);
+  for (int i = 0; i < 16; i++) {
+    if (i >= n) break;
+    vec4 a = frame.lights[i * 2];
+    vec3 d = a.xyz - P;
+    float dist = length(d);
+    float att = clamp(1.0 - dist / a.w, 0.0, 1.0);
+    att *= att;
+    float ndl = max(dot(N, d / max(dist, 0.001)), 0.0) * 0.75 + 0.25;
+    sum += frame.lights[i * 2 + 1].rgb * (att * ndl);
+  }
+  return sum;
+}
+
+vec2 terrainUV(vec2 xz) {
+  return (xz - frame.terrainRect.xy) * frame.terrainRect.zw;
 }
 
 // Stylised PBR-lite lighting shared by meshes and terrain.

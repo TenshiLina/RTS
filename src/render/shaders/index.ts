@@ -20,6 +20,8 @@ import overlayFrag from './overlay.frag?raw';
 import particleVert from './particle.vert?raw';
 import particleFrag from './particle.frag?raw';
 import uiVert from './ui.vert?raw';
+import fxMeshVert from './fxmesh.vert?raw';
+import fxMeshFrag from './fxmesh.frag?raw';
 import uiFrag from './ui.frag?raw';
 
 const includes: Record<string, string> = { 'common.glsl': common };
@@ -33,7 +35,7 @@ export function resolveIncludes(src: string): string {
 }
 
 const raw = {
-  meshVert, meshFrag, depthFrag, depthSimpleFrag, skyVert, skyFrag, terrainVert, terrainFrag, waterVert, waterFrag, fullscreenVert, bloomFrag, compositeFrag, overlayVert, overlayFrag, particleVert, particleFrag, uiVert, uiFrag,
+  meshVert, meshFrag, depthFrag, depthSimpleFrag, skyVert, skyFrag, terrainVert, terrainFrag, waterVert, waterFrag, fullscreenVert, bloomFrag, compositeFrag, overlayVert, overlayFrag, particleVert, particleFrag, uiVert, uiFrag, fxMeshVert, fxMeshFrag,
 };
 export type ShaderName = keyof typeof raw;
 export const SHADERS = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, resolveIncludes(v)])) as Record<ShaderName, string>;

@@ -8,6 +8,7 @@ layout(set = 0, binding = 0) uniform CompositeUniforms {
 } comp;
 layout(set = 0, binding = 1) uniform sampler2D uHDR;
 layout(set = 0, binding = 2) uniform sampler2D uBloom;
+layout(set = 0, binding = 3) uniform sampler2D uDistort; // screen-space UV offsets (heat haze, air)
 layout(location = 0) out vec4 outColor;
 
 vec3 aces(vec3 x) {
@@ -16,7 +17,8 @@ vec3 aces(vec3 x) {
 }
 
 void main() {
-  vec3 hdr = texture(uHDR, vUV).rgb;
+  vec2 off = texture(uDistort, vUV).xy;
+  vec3 hdr = texture(uHDR, vUV + off).rgb;
   vec3 bloom = texture(uBloom, vUV).rgb;
   vec3 c = (hdr + bloom * comp.grade.w) * comp.grade.x * comp.tint.rgb;
   c = aces(c);

@@ -2,6 +2,7 @@
 // an attract-mode title screen (AI vs AI on the skirmish map) until the player starts a match.
 // URL params for automation: ?start=easy|normal (skip title) &time=<s> fast-forward
 //   &capture=1 (preserve drawing buffer for screenshots)
+//   &manual=1 (no rAF loop: tools drive frames with window.__step(dt) for frame-exact video capture)
 
 import { WebPlatform } from '../../platform/web/webPlatform';
 import { WebGL2Device } from '../../render/rhi/webgl2/device';
@@ -142,9 +143,9 @@ async function main() {
       frameError(e);
     }
   };
-  const step = () => {
+  const step = (fixedDt?: number) => {
     const now = platform.now();
-    const dt = Math.min(0.1, now - last);
+    const dt = fixedDt ?? Math.min(0.1, now - last);
     last = now;
     const s = uiScale();
     if (Math.abs(s - glyphScale) > 0.2) {
@@ -166,7 +167,12 @@ async function main() {
     frames++;
     (window as any).__game = { ready: frames > 3, frames, error: null, frameErrors: [...seenErrors], game };
   };
-  platform.requestFrame(loop);
+  if (params.has('manual')) {
+    (window as any).__step = (dt: number, n = 1) => {
+      for (let i = 0; i < n; i++) step(dt);
+    };
+    for (let i = 0; i < 5; i++) step(1 / 30);
+  } else platform.requestFrame(loop);
 }
 
 main().catch(showError);

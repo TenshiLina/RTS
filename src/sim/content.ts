@@ -5,7 +5,46 @@ import { LEPTONS, TICK_HZ } from './intmath';
 
 export type ArmorClass = 'light' | 'medium' | 'heavy' | 'fortified' | 'structure' | 'air' | 'spirit' | 'cavalry';
 export type Tab = 'structures' | 'defense' | 'infantry' | 'machines';
-export type ProjectileKind = 'none' | 'arrow' | 'talisman';
+export type ProjectileKind = 'none' | 'arrow' | 'talisman' | 'fire' | 'frost' | 'water' | 'gale';
+
+/** Status effects a hit applies (ticks / leptons / percent). */
+export interface OnHit {
+  burnDps: number;
+  burnTicks: number;
+  chillPct: number;
+  chillTicks: number;
+  wetTicks: number;
+  knockback: number;
+  freezeIfWetTicks: number;
+}
+
+export type SpellKind = 'wildfire' | 'glacier' | 'surge' | 'whirlwind';
+export interface SpellType {
+  id: string;
+  kind: SpellKind;
+  name: string;
+  hanzi: string;
+  description: string;
+  cooldown: number; // ticks
+  castTicks: number;
+  range: number; // leptons
+  radius: number;
+  length: number;
+  width: number;
+  speed: number; // leptons / tick
+  count: number;
+  intervalTicks: number;
+  durationTicks: number;
+  lingerTicks: number;
+  damage: number;
+  dps: number;
+  freezeTicks: number;
+  wetTicks: number;
+  knockback: number; // leptons
+  liftTicks: number;
+  minTargets: number;
+  vs: Record<string, number>; // percent
+}
 
 export interface WeaponType {
   damage: number;
@@ -16,6 +55,7 @@ export interface WeaponType {
   splash: number; // leptons (0 = single target)
   vs: Record<string, number>; // percent
   windup: number; // ticks between starting the attack and the shot
+  onHit?: OnHit;
 }
 
 interface Common {
@@ -44,6 +84,8 @@ export interface UnitType extends Common {
   harvester?: { capacity: number; harvestPerSec: number; unloadPerSec: number };
   deploysInto?: string;
   abilities: string[];
+  school?: 'fire' | 'ice' | 'water' | 'air';
+  spell?: SpellType;
 }
 
 export interface StructureType extends Common {
@@ -91,13 +133,61 @@ export interface Rules {
   maxProductionBonusPct: number;
   buildupTicks: number;
   powers: PowerType[];
+  reactions: { wetFreezeBonusPct: number; wetLightningBonusPct: number; fireWhirlDps: number };
 }
 
 const sec = (s: number) => Math.max(1, Math.round(s * TICK_HZ));
 const cells = (c: number) => Math.round(c * LEPTONS);
 /** metres → leptons (cell = 3 m) */
 const metres = (m: number) => Math.round((m / 3) * LEPTONS);
-const PROJ_SPEED: Record<ProjectileKind, number> = { none: 0, arrow: cells(22) / TICK_HZ, talisman: cells(9) / TICK_HZ };
+const PROJ_SPEED: Record<ProjectileKind, number> = {
+  none: 0, arrow: cells(22) / TICK_HZ, talisman: cells(9) / TICK_HZ,
+  fire: cells(11) / TICK_HZ, frost: cells(19) / TICK_HZ, water: cells(24) / TICK_HZ, gale: cells(28) / TICK_HZ,
+};
+const pctTable = (vs: any): Record<string, number> => Object.fromEntries(Object.entries(vs ?? {}).map(([k, v]) => [k, Math.round((v as number) * 100)]));
+
+function onHit(h: any): OnHit | undefined {
+  if (!h) return undefined;
+  return {
+    burnDps: h.burn?.dps ?? 0,
+    burnTicks: h.burn ? sec(h.burn.seconds) : 0,
+    chillPct: h.chill ? Math.round(h.chill.slow * 100) : 0,
+    chillTicks: h.chill ? sec(h.chill.seconds) : 0,
+    wetTicks: h.wet ? sec(h.wet) : 0,
+    knockback: h.knockback ? cells(h.knockback) : 0,
+    freezeIfWetTicks: h.freezeIfWet ? sec(h.freezeIfWet) : 0,
+  };
+}
+
+function spell(s: any): SpellType | undefined {
+  if (!s) return undefined;
+  return {
+    id: s.id,
+    kind: s.id as SpellKind,
+    name: s.name,
+    hanzi: s.hanzi ?? '',
+    description: s.description ?? '',
+    cooldown: sec(s.cooldown),
+    castTicks: sec(s.castTime ?? 0.5),
+    range: cells(s.range ?? 6),
+    radius: cells(s.radius ?? 0),
+    length: cells(s.length ?? 0),
+    width: cells(s.width ?? 0),
+    speed: Math.max(1, Math.round(cells(s.speed ?? 0) / TICK_HZ)),
+    count: s.count ?? 0,
+    intervalTicks: s.interval ? Math.max(1, Math.round(s.interval * TICK_HZ)) : 1,
+    durationTicks: s.duration ? sec(s.duration) : 0,
+    lingerTicks: s.linger ? sec(s.linger) : 0,
+    damage: s.damage ?? 0,
+    dps: s.dps ?? 0,
+    freezeTicks: s.freeze ? sec(s.freeze) : 0,
+    wetTicks: s.wet ? sec(s.wet) : 0,
+    knockback: cells(s.knockback ?? 0),
+    liftTicks: s.lift ? sec(s.lift) : 0,
+    minTargets: s.minTargets ?? 2,
+    vs: pctTable(s.vs),
+  };
+}
 
 function weapon(w: any, projectileDefault: ProjectileKind = 'none'): WeaponType {
   const projectile: ProjectileKind = w.projectile ?? projectileDefault;
@@ -112,6 +202,7 @@ function weapon(w: any, projectileDefault: ProjectileKind = 'none'): WeaponType 
     splash: cells(w.splash ?? 0),
     vs,
     windup: projectile === 'none' ? sec(0.35) : sec(0.25),
+    onHit: onHit(w.onHit),
   };
 }
 
@@ -177,6 +268,8 @@ export class Content {
         harvester: u.harvester ? { capacity: u.harvester.capacity, harvestPerSec: u.harvester.harvestRate, unloadPerSec: u.harvester.unloadRate } : undefined,
         deploysInto: (u.abilities ?? []).includes('deploy_to_command_hall') ? 'azure_command_hall' : undefined,
         abilities: u.abilities ?? [],
+        school: u.school,
+        spell: spell(u.spell),
       };
       this.units.set(t.id, t);
     }
@@ -207,6 +300,11 @@ export class Content {
         vs: Object.fromEntries(Object.entries(p.vs ?? {}).map(([k, v]) => [k, Math.round((v as number) * 100)])),
         description: p.description,
       })),
+      reactions: {
+        wetFreezeBonusPct: Math.round((r.reactions?.wetFreezeBonus ?? 0.6) * 100),
+        wetLightningBonusPct: Math.round((r.reactions?.wetLightningBonus ?? 0.5) * 100),
+        fireWhirlDps: r.reactions?.fireWhirlDps ?? 16,
+      },
     };
   }
   get(id: string): EntityType | undefined {

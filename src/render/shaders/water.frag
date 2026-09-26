@@ -10,6 +10,7 @@ layout(set = 1, binding = 0) uniform WaterUniforms {
 } water;
 layout(set = 1, binding = 1) uniform sampler2DShadow uShadow;
 layout(set = 1, binding = 2) uniform sampler2D uHeight;
+layout(set = 1, binding = 3) uniform sampler2D uFxMap;
 
 layout(location = 0) out vec4 outColor;
 
@@ -47,6 +48,26 @@ void main() {
   col = mix(col, vec3(0.95) * (frame.skyColor.w + frame.sunDir.w * 0.5), clamp(foam, 0.0, 1.0) * 0.8);
 
   float alpha = clamp(smoothstep(0.0, 0.25, depth) * 0.75 + fres * 0.25 + foam * 0.3, 0.0, 0.96);
+  // magic light glints on the surface
+  col += pointLights(vWorldPos + vec3(0.0, 0.3, 0.0), N) * (0.15 + fres);
+
+  // frozen by ice magic: an opaque sheet with cracks and a cold sheen
+  float frost = texture(uFxMap, terrainUV(xz)).g;
+  if (frost > 0.02) {
+    vec2 re = mat2(0.8, -0.6, 0.6, 0.8) * xz;
+    float cell = 1.0 - abs(vnoise(re * 1.4) * 2.0 - 1.0);
+    float cracks = smoothstep(0.93, 0.99, cell) + smoothstep(0.95, 0.995, 1.0 - abs(vnoise(re * 4.0 + 3.0) * 2.0 - 1.0)) * 0.6;
+    float cover = smoothstep(0.15, 0.45, frost + (vnoise(xz * 0.8) - 0.5) * 0.3);
+    vec3 Ni = normalize(vec3((vnoise(xz * 3.0) - 0.5) * 0.15, 1.0, (vnoise(xz * 3.0 + 7.0) - 0.5) * 0.15));
+    float fi = 0.04 + 0.96 * pow(1.0 - max(dot(Ni, V), 0.0), 5.0);
+    vec3 Ri = reflect(-V, Ni);
+    vec3 ice = mix(vec3(0.42, 0.62, 0.78), vec3(0.85, 0.93, 1.0), 0.35 + 0.3 * vnoise(xz * 0.7)) * (frame.skyColor.w + frame.sunDir.w * 0.45 * shadow);
+    ice = mix(ice, mix(frame.fogColor.rgb, frame.skyColor.rgb * 1.4, clamp(Ri.y, 0.0, 1.0)), fi * 0.6);
+    ice += frame.sunColor.rgb * pow(max(dot(Ri, L), 0.0), 120.0) * 4.0 * shadow;
+    ice = mix(ice, vec3(0.95, 0.98, 1.0), cracks * 0.7);
+    col = mix(col, ice, cover);
+    alpha = mix(alpha, 0.97, cover);
+  }
   col = applyFog(col, vWorldPos);
   outColor = vec4(col, alpha);
 }
