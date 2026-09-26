@@ -22,7 +22,7 @@ export type FxCell = (typeof FX)[keyof typeof FX];
 /** fragment shader behaviour per particle */
 export const MODE = { plain: 0, flame: 1, dissolve: 2, twinkle: 3, electric: 4 } as const;
 /** procedural ribbon materials */
-export const TRAIL = { beam: 8, water: 9, flame: 10, wind: 11, frost: 12 } as const;
+export const TRAIL = { beam: 8, water: 9, flame: 10, wind: 11, frost: 12, wash: 13 } as const;
 
 export type RGBA = [number, number, number, number];
 
@@ -120,11 +120,14 @@ export interface TrailSpec {
   /** fraction of life spent fading out at the end (default 1 = linear) */
   fadeOut?: number;
   distort?: boolean;
+  /** lie flat on the ground (horizontal ribbon) instead of facing the camera */
+  flat?: boolean;
   update?: (t: Trail, dt: number) => boolean | void;
 }
-export interface Trail extends Required<Omit<TrailSpec, 'update' | 'color1' | 'distort'>> {
+export interface Trail extends Required<Omit<TrailSpec, 'update' | 'color1' | 'distort' | 'flat'>> {
   color1: RGBA;
   distort: boolean;
+  flat: boolean;
   update?: (t: Trail, dt: number) => boolean | void;
   age: number;
   seed: number;
@@ -519,6 +522,7 @@ export class ParticleSystem {
       scroll: s.scroll ?? 0,
       fadeOut: s.fadeOut ?? 1,
       distort: s.distort ?? false,
+      flat: s.flat ?? false,
       update: s.update,
       age: 0,
       seed: Math.random(),
@@ -699,7 +703,9 @@ export class ParticleSystem {
       for (let i = 0; i < pts.length; i++) {
         const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
         const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
-        let sx = dy * fz - dz * fy, sy = dz * fx - dx * fz, sz = dx * fy - dy * fx;
+        // camera-facing ribbon, or (flat) side vector in the ground plane
+        const ux = tr.flat ? 0 : fx, uy = tr.flat ? 1 : fy, uz = tr.flat ? 0 : fz;
+        let sx = dy * uz - dz * uy, sy = dz * ux - dx * uz, sz = dx * uy - dy * ux;
         const sl = Math.hypot(sx, sy, sz) || 1;
         const f = along[i] / total;
         const w = (tr.width[0] + (tr.width[1] - tr.width[0]) * f) * 0.5;

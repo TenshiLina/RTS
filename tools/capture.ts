@@ -39,6 +39,9 @@ const cfg = (await page.evaluate(`(async () => { const g = window.__game.game; c
 const frames = parseInt(framesArg ?? '') || cfg?.frames || 90;
 const dt = dtArg ? eval(dtArg) : cfg?.dt ?? 1 / 30;
 const t0 = Date.now();
+// PRESTEP=n advances n frames before recording (stills at a chosen moment)
+const pre = parseInt(process.env.PRESTEP ?? '0');
+if (pre > 0) await page.evaluate(`window.__step(${dt}, ${pre})`);
 for (let i = 0; i < frames; i++) {
   // read the canvas directly (preserveDrawingBuffer via capture=1): page.screenshot waits for a
   // compositor frame, which never comes while the rAF loop is off

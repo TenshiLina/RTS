@@ -575,8 +575,8 @@ export class MagicFx {
         const y = this.g.h(x, z);
         ps.spawn({ pos: [x, y + 0.45, z], vel: [0, 1.5, 0], life: 0.45, size: [0.8, 0.25], aspect: 0.5, color: [1, 1, 1, 1], cell: FX.flame, mode: MODE.flame, additive: true, intensity: [1.7, 0.9] });
         if (R() < 0.5) ps.spawn({ pos: [x, y + 0.2, z], vel: [rr(-1, 1), rr(2, 4), rr(-1, 1)], life: 0.6, size: [0.06, 0.03], color: C.ember, cell: FX.ember, additive: true, intensity: [4, 1] });
-        this.ground.stamp(HEAT, x, z, 0.55, 1);
-        this.ground.stamp(SCORCH, x, z, 0.7, 0.8);
+        this.ground.stamp(HEAT, x, z, 0.55, 0.9);
+        this.ground.stamp(SCORCH, x, z, 0.6, 0.5);
       }
     });
     // beat 2: the ring erupts
@@ -703,12 +703,13 @@ export class MagicFx {
       if (collapse > 0 && !zf.ended) return;
       // spray and foam off the crest, mist, splashes at the base
       const side: V3 = [dir[2], 0, -dir[0]];
+      // fine spray and mist, not foam balls: puffs of foam sprites read as cotton at this zoom
       for (let i = 0; i < 6; i++) {
         const u = rr(-0.5, 0.5) * wdt * 0.9;
         const cx = x + side[0] * u + dir[0] * 0.3, cz = z + side[2] * u + dir[2] * 0.3;
         const cy = this.g.h(cx, cz) + hgt * rr(0.85, 1.05);
-        this.ps.spawn({ pos: [cx, cy, cz], vel: [dir[0] * rr(3, 6), rr(1.5, 4), dir[2] * rr(3, 6)], life: rr(0.5, 0.9), size: [0.5, 1.2], color: [0.9, 0.96, 1, 0.8], cell: FX.foam, drag: 2, gravity: 4, rot: R() * 6 });
-        this.ps.spawn({ pos: [cx, cy, cz], vel: [dir[0] * rr(4, 8) + rr(-1, 1), rr(2, 5), dir[2] * rr(4, 8) + rr(-1, 1)], life: 1.2, size: [0.07, 0.07], color: C.spray, cell: FX.droplet, gravity: 11, stretch: 0.05, ground: 'die' });
+        if (i < 3) this.ps.spawn({ pos: [cx, cy, cz], vel: [dir[0] * rr(3, 6), rr(1, 3), dir[2] * rr(3, 6)], life: rr(0.4, 0.7), size: [0.4, 1.1], color: [0.86, 0.94, 0.98, 0.45], color1: [0.86, 0.94, 0.98, 0], cell: FX.steam, drag: 2.5, gravity: 2, rot: R() * 6 });
+        for (let j = 0; j < 2; j++) this.ps.spawn({ pos: [cx, cy, cz], vel: [dir[0] * rr(4, 8) + rr(-1, 1), rr(2, 5), dir[2] * rr(4, 8) + rr(-1, 1)], life: 1.2, size: [0.07, 0.07], color: C.spray, cell: FX.droplet, gravity: 11, stretch: 0.05, ground: 'die' });
       }
       if (R() < 0.5) this.ps.spawn({ pos: [x + side[0] * rr(-0.5, 0.5) * wdt, this.g.h(x, z) + hgt * 0.8, z + side[2] * rr(-0.5, 0.5) * wdt], vel: [dir[0] * 2, 1, dir[2] * 2], life: 1.2, size: [1, 2.6], color: [0.85, 0.93, 0.96, 0.3], cell: FX.steam, drag: 1, rot: R() * 6 });
       if (R() < 0.35) this.splash([x + side[0] * rr(-0.5, 0.5) * wdt + dir[0] * 1.2, this.g.h(x, z), z + side[2] * rr(-0.5, 0.5) * wdt + dir[2] * 1.2], 1.4, true);
@@ -716,15 +717,15 @@ export class MagicFx {
       if (R() < 0.7) {
         const u = rr(-0.5, 0.5) * wdt, back = rr(0.5, 2.5);
         const fx = x + side[0] * u - dir[0] * back, fz = z + side[2] * u - dir[2] * back;
-        this.ps.spawn({ pos: [fx, this.g.h(fx, fz) + 0.1, fz], vel: [dir[0] * 2, 0, dir[2] * 2], life: rr(0.9, 1.4), size: [rr(0.5, 0.9), rr(0.8, 1.3)], color: [0.8, 0.92, 0.95, 0.4], color1: [0.8, 0.92, 0.95, 0], cell: FX.foam, flat: true, drag: 1.5, rot: R() * 6, vrot: rr(-0.5, 0.5) });
+        this.ps.spawn({ pos: [fx, this.g.h(fx, fz) + 0.1, fz], vel: [dir[0] * 2, 0, dir[2] * 2], life: rr(0.9, 1.4), size: [rr(0.35, 0.6), rr(0.6, 0.9)], color: [0.8, 0.92, 0.95, 0.3], color1: [0.8, 0.92, 0.95, 0], cell: FX.foam, flat: true, drag: 1.5, rot: R() * 6, vrot: rr(-0.5, 0.5) });
       }
     });
     zf.meshes.push(m);
     // a sheet of water flowing over the ground from the caster to the wave front
     const sheet: V3[] = [];
-    for (let i = 0; i < 12; i++) sheet.push([o[0], this.g.h(o[0], o[2]) + 0.15, o[2]]);
+    for (let i = 0; i < 12; i++) sheet.push([o[0], this.g.h(o[0], o[2]) + 0.12, o[2]]);
     this.ps.trail({
-      pts: sheet, width: [W0 * 0.8, W0 * 0.45], color: [0.1, 0.46, 0.55, 0.75], color1: [0.1, 0.46, 0.55, 0.2], intensity: 1, life: travel + 1.3, fadeOut: 0.45, additive: false, material: TRAIL.water, scroll: 6,
+      pts: sheet, width: [W0 * 1.0, W0 * 0.6], color: [0.1, 0.42, 0.5, 0.85], color1: [0.1, 0.42, 0.5, 0.5], intensity: 1, life: travel + 1.3, fadeOut: 0.6, additive: false, material: TRAIL.wash, scroll: 6, flat: true,
       update: (tr) => {
         const f = zf.front;
         for (let i = 0; i < tr.pts.length; i++) {
@@ -752,13 +753,16 @@ export class MagicFx {
   private whirlStart(zf: ZoneFx, p: V3) {
     const v = this.v;
     // a tall, narrow dust devil (from the RTS camera a wide funnel would read as a fountain)
-    const dust = v.mesh(MESH.funnel, MAT.dust, [0.52, 0.42, 0.3, 1], 60, (m) => {
+    const dust = v.mesh(MESH.funnel, MAT.dust, [0.44, 0.34, 0.23, 1], 60, (m) => {
       const k = clamp((this.g.time - zf.t0) / 0.5);
-      m4FromTRS([zf.x, this.g.h(zf.x, zf.z) - 0.2, zf.z], yawQ(-this.g.time * 5), [2.1 * easeOut(k), 9.5 * easeOut(k), 2.1 * easeOut(k)], m.matrix);
+      const r = (zf.fire ? 2.2 : 2.6) * easeOut(k);
+      m4FromTRS([zf.x, this.g.h(zf.x, zf.z) - 0.2, zf.z], yawQ(-this.g.time * 5), [r, 12 * easeOut(k), r], m.matrix);
     });
     const streak = v.mesh(MESH.funnel, MAT.wind, [0.92, 0.95, 1, 1], 60, (m) => {
       const k = clamp((this.g.time - zf.t0) / 0.5);
-      m4FromTRS([zf.x, this.g.h(zf.x, zf.z) - 0.2, zf.z], yawQ(-this.g.time * 7), [2.5 * easeOut(k), 10.2 * easeOut(k), 2.5 * easeOut(k)], m.matrix);
+      // once ignited the shell tightens into a flame column inside the smoke funnel
+      const r = (zf.fire ? 1.8 : 3.0) * easeOut(k), h = (zf.fire ? 9 : 12.8) * easeOut(k);
+      m4FromTRS([zf.x, this.g.h(zf.x, zf.z) - 0.2, zf.z], yawQ(-this.g.time * 7), [r, h, r], m.matrix);
     });
     zf.meshes.push(dust, streak);
     v.gust(zf.x, zf.z, 11, -1.5, zf.zone.life / TICK_HZ, () => (zf.ended ? null : [zf.x, zf.z]));
@@ -772,16 +776,18 @@ export class MagicFx {
     // share one anchor per frame (moving funnel) — particles follow the zone as it travels
     const a = this.whirlAnchor(zf, anchor);
     // dust skirt thrown out at the base
-    for (let i = 0; i < 3; i++) ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(1, 1.8), a: R() * 6.28, w: rr(3.5, 5), dr: rr(1, 2.2), h: rr(0, 0.3), lift: rr(0.1, 0.5) }, life: rr(0.9, 1.4), size: [0.9, 2.4], color: C.dust, cell: FX.dust, rot: R() * 6, vrot: 1.5 });
+    for (let i = 0; i < 3; i++) ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(1, 1.8), a: R() * 6.28, w: rr(3.5, 5), dr: rr(1, 2.2), h: rr(0, 0.3), lift: rr(0.1, 0.5) }, life: rr(0.9, 1.4), size: [0.9, 2.4], color: zf.fire ? [0.16, 0.13, 0.11, 0.55] : [0.48, 0.38, 0.26, 0.6], cell: FX.dust, rot: R() * 6, vrot: 1.5 });
     // debris, leaves and petals climb the funnel
     for (let i = 0; i < 2; i++) {
       const cell = R() < 0.4 ? FX.leaf : R() < 0.5 ? FX.petal : FX.debris;
       ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(0.5, 1), a: R() * 6.28, w: rr(6, 9), dr: 0.35, h: rr(0.2, 1), lift: rr(2.5, 4) }, life: rr(1.8, 2.6), size: [cell === FX.debris ? 0.18 : 0.15, 0.15], color: cell === FX.leaf ? C.leaf : [1, 1, 1, 1], cell, rot: R() * 6, vrot: rr(-10, 10) });
     }
     if (R() < 0.4) ps.spawn({ pos: [a.pos[0], a.pos[1] + 0.2, a.pos[2]], life: 0.5, size: [2.2, 3.2], color: [1, 1, 1, 1], cell: FX.swirl, distort: true, vrot: -8, rot: R() * 6, intensity: [1.4, 0.8] });
-    if (R() < 0.25) ps.spawn({ pos: [a.pos[0], a.pos[1] + 0.06, a.pos[2]], life: 0.7, size: [1.8, 2.6], color: [0.9, 0.84, 0.72, 0.28], cell: FX.swirl, flat: true, vrot: -7, rot: R() * 6 });
+    if (!zf.fire && R() < 0.25) ps.spawn({ pos: [a.pos[0], a.pos[1] + 0.06, a.pos[2]], life: 0.7, size: [1.8, 2.6], color: [0.9, 0.84, 0.72, 0.28], cell: FX.swirl, flat: true, vrot: -7, rot: R() * 6 });
     if (zf.fire) {
-      if (R() < 0.8) ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(0.6, 1.2), a: R() * 6.28, w: rr(6, 8), dr: 0.25, h: rr(0.2, 1), lift: rr(3, 5) }, life: rr(0.6, 1), size: [rr(0.9, 1.4), 0.3], aspect: 0.45, color: [1, 0.9, 0.8, 1], cell: FX.flame, mode: MODE.flame, additive: true, intensity: [1.6, 0.8] });
+      // black smoke boiling off the top of the column and leaning downwind
+      if (R() < 0.6) ps.spawn({ pos: [a.pos[0] + rr(-0.8, 0.8), a.pos[1] + rr(8.5, 10.5), a.pos[2] + rr(-0.8, 0.8)], vel: [rr(0.6, 1.4), rr(1, 2), rr(-0.6, 0.2)], life: rr(1.6, 2.4), size: [1.6, 4], color: C.smoke, cell: FX.smoke, mode: MODE.dissolve, drag: 0.6, rot: R() * 6, vrot: rr(-0.6, 0.6) });
+      if (R() < 0.8) ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(0.7, 1.3), a: R() * 6.28, w: rr(6, 8), dr: 0.25, h: rr(0.2, 1), lift: rr(3, 5) }, life: rr(0.6, 1), size: [rr(0.9, 1.4), 0.3], aspect: 0.42, color: [1, 0.85, 0.7, 1], cell: FX.flame, mode: MODE.flame, additive: true, intensity: [1.3, 0.6] });
       if (R() < 0.8) ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(0.3, 1.5), a: R() * 6.28, w: 7, dr: 0.6, h: 0.5, lift: rr(4, 7) }, life: 1.4, size: [0.07, 0.03], color: C.ember, cell: FX.ember, additive: true, intensity: [4, 1] });
     }
   }
@@ -801,12 +807,19 @@ export class MagicFx {
     // the dust funnel chars to smoke and the wind shell catches fire: a dark column wrapped in
     // spiralling orange tongues (not a glowing blob)
     const [dust, streak] = zf.meshes;
-    if (dust) dust.color = [0.16, 0.12, 0.1, 1];
+    if (dust) dust.color = [0.1, 0.08, 0.07, 1];
     if (streak) {
+      // kept below full strength: seen from above the additive shell stacks its front and back walls
       streak.mat = MAT.fire;
-      streak.color = [0.75, 0.5, 0.35, 1];
+      streak.color = [0.72, 0.44, 0.26, 1];
     }
-    this.v.light([zf.x, this.g.h(zf.x, zf.z) + 3, zf.z], C.fireLight, 9, 12, zf.zone.life / TICK_HZ, { flicker: 1, follow: () => (zf.ended ? null : [zf.x, this.g.h(zf.x, zf.z) + 3, zf.z]) });
+    // a spinning pillar of flame at the core (the funnel is too thin near the ground to carry it)
+    const t0 = this.g.time;
+    zf.meshes.push(this.v.mesh(MESH.column, MAT.fire, [0.62, 0.34, 0.2, 1], zf.zone.life / TICK_HZ, (m) => {
+      const k = easeOut(clamp((this.g.time - t0) / 0.35));
+      m4FromTRS([zf.x, this.g.h(zf.x, zf.z) - 0.1, zf.z], yawQ(-this.g.time * 9), [0.75 * k, 7 * k, 0.75 * k], m.matrix);
+    }));
+    this.v.light([zf.x, this.g.h(zf.x, zf.z) + 3, zf.z], C.fireLight, 6, 12, zf.zone.life / TICK_HZ, { flicker: 1, follow: () => (zf.ended ? null : [zf.x, this.g.h(zf.x, zf.z) + 3, zf.z]) });
     this.g.sfx('fire_erupt', [zf.x, this.g.h(zf.x, zf.z), zf.z], 0.8);
   }
 

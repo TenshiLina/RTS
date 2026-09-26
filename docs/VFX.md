@@ -99,3 +99,18 @@ Captured with `tools/capture.ts` (frame-stepped, 15 fps) from staged scenarios i
 | Air 1 | Whirlwind read as a white feathery fountain | Narrower, taller funnel (it flared into a plume from the RTS camera); earthy dust with spiral bands; wind streaks at half opacity; more carried debris |
 | Wrath 1 | Crater and lava cracks read well; clouds drifted off-target in perspective; strike flash washed the screen | Storm lowered to 9–12 m so it sits over the target; flash and strike light halved; bluish shock ring; bigger arcs over wet ground |
 | Fire whirl 1 | Read as a glowing blob | Dust funnel chars to dark smoke, the wind shell catches fire, fewer and dimmer spiralling tongues |
+| Water 2 | The wave's flat sheet trail read as hard-edged glass slabs; the wave itself read as a snow bank (mostly foam, cotton-ball foam sprites) | New `wash` ribbon material: ragged noisy edges, foam lace gathering at the edges, fades in behind the front and out toward the caster; foam kept to the upper face of the wave with a teal body; crest spray is fine mist and droplets instead of foam balls |
+| Air 2 | Funnel too small and pale to register next to a squad | Taller and wider funnel (12 m), earthier dust and skirt; spiral swirl on the ground; lifted units spin inside it |
+| Fire whirl 2 | Still a translucent orange cone with a pale haze at the base | Once ignited the dust skirt turns to soot and a black plume boils off the top and leans downwind |
+| Fire whirl 3 | The flame shell vanished: the funnel is only 0.1 m wide at the ground, where the flame is brightest | A spinning pillar of flame (column mesh) at the core, dimmed so its front and back walls don't stack to white |
+| Water 3 | Pale bands with straight edges still followed the wave's path | Two causes. Terrain puddles were a threshold on the wet amount, so they traced the stamp's edge; they are now scattered, noise-shaped patches. And ribbons always faced the camera, so a ribbon at ground level stood half upright and the terrain cut it along a straight line; ribbons can now lie flat on the ground |
+| Final | Full-quality stills (4× MSAA) at each spell's key moment | All four schools, Heaven's Wrath and the fire-whirl and steam reactions read as intended at the default zoom; see the limits in §8 |
+
+## 8. Known limits of this evaluation
+
+* Captures come from a headless software renderer, frame-stepped at 15 fps; real-GPU frame rate
+  and the look at 60 fps have not been checked yet.
+* Sound was checked by spectrogram (each school has a distinct timbre) but not by ear in a mix
+  with a full battle.
+* Effects were judged at the default camera distance; the zoomed-in and zoomed-out extremes
+  had only spot checks.

@@ -57,6 +57,19 @@ void main() {
       a = dash * exp(-x * x * 5.0);
       rgb = vColor.rgb;
       dir = vec2(x * 1.5, 0.0);
+    } else if (mode == 13) {   // wash: thin sheet of water racing over the ground — ragged edges, foam lace
+      float n = vnoise(vec2(x * 2.2 + seed * 9.0, s * 0.45));
+      // ragged edge that always reaches zero before the ribbon's geometric border
+      float edge = smoothstep(0.9, 0.25, abs(x) + (n - 0.5) * 1.2) * smoothstep(1.0, 0.8, abs(x));
+      float lace = smoothstep(0.62, 0.82, vnoise(vec2(x * 5.0 + seed * 3.0, s * 1.6)));
+      lace = clamp(lace * (smoothstep(0.2, 0.9, abs(x) + 0.35 * n) + 0.35), 0.0, 1.0); // foam gathers at the edges
+      // no hard ends: fades in behind the wave front and out toward the caster
+      float ends = smoothstep(0.0, 0.06, age) * (1.0 - smoothstep(0.3, 1.0, age));
+      float hl = smoothstep(0.62, 0.9, vnoise(vec2(x * 3.0 - seed, s * 0.8 + 4.0))) * (1.0 - lace);
+      vec3 lit = vec3(frame.skyColor.w + frame.sunDir.w * 0.45);
+      rgb = mix(vColor.rgb, vec3(0.9, 0.96, 1.0), lace) * lit + vec3(0.5, 0.6, 0.65) * hl * frame.sunDir.w;
+      a = edge * ends * (0.22 + 0.55 * lace + 0.2 * hl);
+      dir = vec2(x, 0.0);
     } else {                   // 12 frost mist
       float n = vnoise(vec2(x * 2.0 + seed * 5.0, s * 1.4 - t * 0.7)) * 0.7 + vnoise(vec2(x * 6.0, s * 4.0)) * 0.3;
       a = smoothstep(1.0, 0.2, abs(x)) * (0.35 + 0.65 * n);

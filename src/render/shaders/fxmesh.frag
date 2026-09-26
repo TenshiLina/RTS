@@ -63,12 +63,13 @@ void main() {
     vec3 body = vColor.rgb * (amb * 1.2 + sun * 0.35 * max(dot(N, L), 0.2));
     col = mix(body, sky, fres * 0.85) + sun * pow(max(dot(R, L), 0.0), 150.0) * 5.0;
     // a thick white crest and torn foam streaks running down the face: the wave's silhouette
-    float crest = smoothstep(0.5, 0.8, vUV.y);
-    float streaks = smoothstep(0.5, 0.75, vnoise(vec2(vUV.x * 16.0, vUV.y * 4.0 - t * 2.2 + seed)));
-    float foam = clamp(crest * (0.7 + 0.3 * vnoise(vUV * vec2(30.0, 10.0) - vec2(0.0, t * 3.0))) + streaks * 0.55 * smoothstep(0.25, 0.6, vUV.y), 0.0, 1.0);
+    // (kept to the upper face: a wave that is mostly foam reads as snow or ice from the RTS camera)
+    float crest = smoothstep(0.64, 0.86, vUV.y + (vnoise(vec2(vUV.x * 12.0, t)) - 0.5) * 0.12);
+    float streaks = smoothstep(0.55, 0.8, vnoise(vec2(vUV.x * 16.0, vUV.y * 4.0 - t * 2.2 + seed)));
+    float foam = clamp(crest * (0.7 + 0.3 * vnoise(vUV * vec2(30.0, 10.0) - vec2(0.0, t * 3.0))) + streaks * 0.4 * smoothstep(0.35, 0.7, vUV.y), 0.0, 1.0);
     col = mix(col, vec3(0.94, 0.97, 1.0) * (amb * 1.3 + sun * 0.55), foam);
     col += pointLights(vWorld, N) * 0.3;
-    a = clamp(0.68 + fres * 0.3 + foam * 0.3, 0.0, 1.0) * fade;
+    a = clamp(0.8 + fres * 0.2 + foam * 0.2, 0.0, 1.0) * fade;
     // soften the base where the sheet meets the ground
     a *= smoothstep(0.0, 0.08, vUV.y);
   } else if (mat == 2) {

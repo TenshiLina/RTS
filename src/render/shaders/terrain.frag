@@ -99,7 +99,9 @@ void main() {
   rough = mix(rough, 0.98, charW);
   // wet: darker and glossy; puddles in the wettest spots mirror the sky
   float wet = gfx.b;
-  float puddle = smoothstep(0.5, 0.72, wet + (fbm(xz * 0.55 + 9.0) - 0.5) * 0.55);
+  // (scattered, noise-shaped patches: a threshold on the wet amount alone traced the stamp's
+  // straight edges along a wave's path)
+  float puddle = smoothstep(0.95, 1.12, wet * 0.9 + (fbm(xz * 0.55 + 9.0) - 0.5) * 1.1);
   // (darker and glossier, not black: the sheen sells "wet", not the darkness)
   albedo *= mix(1.0, 0.7, smoothstep(0.0, 0.5, wet));
   albedo = mix(albedo, albedo * 0.8 + srgb(vec3(0.04, 0.08, 0.1)), puddle);
