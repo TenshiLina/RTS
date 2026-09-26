@@ -32,6 +32,38 @@ export interface Surface {
   onResize(cb: (w: number, h: number) => void): void;
 }
 
+export interface GlyphFaceRequest {
+  /** key used by the UI, e.g. "ui14" */
+  name: string;
+  family: string;
+  weight: number;
+  /** pixel size (already multiplied by the UI scale) */
+  size: number;
+  chars: string;
+}
+export interface GlyphInfo {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  xoff: number;
+  yoff: number;
+  adv: number;
+}
+export interface GlyphFace {
+  size: number;
+  lineHeight: number;
+  ascent: number;
+  glyphs: Record<string, GlyphInfo>;
+}
+/** RGBA atlas: rgb = 255, a = coverage. */
+export interface GlyphAtlasData {
+  width: number;
+  height: number;
+  pixels: Uint8Array;
+  faces: Record<string, GlyphFace>;
+}
+
 export interface Platform {
   readonly name: string;
   readonly surface: Surface;
@@ -42,4 +74,8 @@ export interface Platform {
   loadText(path: string): Promise<string>;
   storageGet(key: string): string | null;
   storageSet(key: string, value: string): void;
+  /** Contextual pointer: select / attack / move / place / power / sell. */
+  setCursor(kind: 'default' | 'select' | 'attack' | 'move' | 'place' | 'power' | 'sell' | 'harvest'): void;
+  /** Rasterise glyphs with the OS text stack (canvas / CoreText / DirectWrite / FreeType). */
+  rasterizeGlyphs(faces: GlyphFaceRequest[]): Promise<GlyphAtlasData>;
 }

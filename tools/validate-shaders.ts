@@ -24,6 +24,10 @@ const programs: { name: string; vert: string; frag: string; defines?: Record<str
   { name: 'sky', vert: 'sky.vert', frag: 'sky.frag' },
   { name: 'bloom', vert: 'fullscreen.vert', frag: 'bloom.frag' },
   { name: 'composite', vert: 'fullscreen.vert', frag: 'composite.frag' },
+  { name: 'overlay', vert: 'overlay.vert', frag: 'overlay.frag' },
+  { name: 'particles-alpha', vert: 'particle.vert', frag: 'particle.frag' },
+  { name: 'particles-add', vert: 'particle.vert', frag: 'particle.frag', defines: { ADDITIVE: 1 } },
+  { name: 'ui', vert: 'ui.vert', frag: 'ui.frag' },
 ];
 
 const glslangInit = require('@webgpu/glslang');

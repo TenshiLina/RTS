@@ -1133,7 +1133,8 @@ export class World {
         });
         if (ok) h += 5;
       }
-      if (!built.some((o) => o !== s && gap(s, o) <= 2)) h -= 4;
+      // sprawl penalty only once a base exists (a lone Yamen isn't "isolated")
+      if (built.length >= 3 && !built.some((o) => o !== s && gap(s, o) <= 2)) h -= 4;
     }
     return Math.max(this.content.rules.harmonyMinPct, Math.min(this.content.rules.harmonyMaxPct, h));
   }

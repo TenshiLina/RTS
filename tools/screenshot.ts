@@ -9,7 +9,9 @@ const [outDir, ...rest] = process.argv.slice(2);
 mkdirSync(outDir, { recursive: true });
 const shots: [string, string][] = [];
 for (let i = 0; i < rest.length; i += 2) shots.push([rest[i], rest[i + 1] ?? `shot${i / 2}`]);
-const base = process.env.VIEWER_URL ?? 'http://localhost:5173/';
+const page0 = process.env.PAGE ?? 'viewer';
+const base = process.env.VIEWER_URL ?? (page0 === 'game' ? 'http://localhost:5173/' : 'http://localhost:5173/viewer.html');
+const flag = page0 === 'game' ? '__game' : '__viewer';
 const w = parseInt(process.env.W ?? '1280'), h = parseInt(process.env.H ?? '800');
 
 const browser = await chromium.launch({
@@ -25,8 +27,8 @@ for (const [q, name] of shots) {
   const t = Date.now();
   let state: any = null;
   while (Date.now() - t < 120000) {
-    state = await page.evaluate(() => (window as any).__viewer ?? null);
-    if (state?.error || (state?.ready && state.frames > 6)) break;
+    state = await page.evaluate((f) => { const v = (window as any)[f]; return v ? { ready: v.ready, frames: v.frames, error: v.error } : null; }, flag);
+    if (state?.error || (state?.ready && state.frames > (Number(process.env.FRAMES) || 6))) break;
     await page.waitForTimeout(250);
   }
   if (state?.error) console.log('ERROR', name, state.error.slice(0, 3000));

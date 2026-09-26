@@ -23,7 +23,7 @@ vec3 flowers(vec2 p, float density, inout float mask) {
   float on = step(h, density) * smoothstep(r, r * 0.4, d);
   mask = on;
   float k = hash12(cell + 41.0);
-  vec3 col = k < 0.3 ? srgb(vec3(0.98, 0.96, 0.9)) : k < 0.55 ? srgb(vec3(0.98, 0.82, 0.25)) : k < 0.8 ? srgb(vec3(0.96, 0.6, 0.75)) : srgb(vec3(0.62, 0.5, 0.9));
+  vec3 col = k < 0.2 ? srgb(vec3(0.9, 0.88, 0.82)) : k < 0.5 ? srgb(vec3(0.95, 0.78, 0.25)) : k < 0.8 ? srgb(vec3(0.92, 0.55, 0.7)) : srgb(vec3(0.6, 0.48, 0.88));
   return col;
 }
 
@@ -37,8 +37,8 @@ void main() {
   float mid = fbm(xz * 0.18 + 5.0);
   float fine = vnoise(xz * 2.5);
   float blades = vnoise(xz * vec2(14.0, 9.0) + vnoise(xz * 3.0) * 2.0);
-  vec3 grassA = srgb(vec3(0.29, 0.40, 0.17));
-  vec3 grassB = srgb(vec3(0.38, 0.47, 0.21));
+  vec3 grassA = srgb(vec3(0.27, 0.37, 0.16));
+  vec3 grassB = srgb(vec3(0.35, 0.43, 0.2));
   vec3 grassC = srgb(vec3(0.19, 0.30, 0.14));
   vec3 grass = mix(grassC, mix(grassA, grassB, smoothstep(0.35, 0.7, mid)), smoothstep(0.25, 0.65, big));
   grass *= 0.86 + 0.18 * fine + 0.1 * blades;
@@ -53,7 +53,7 @@ void main() {
   // --- sand / shore
   vec3 sand = srgb(vec3(0.74, 0.66, 0.48)) * (0.9 + 0.12 * fine);
   // --- jade-tinted soil around deposits
-  vec3 jadeSoil = mix(dirt, srgb(vec3(0.25, 0.55, 0.42)), 0.45 + 0.2 * mid);
+  vec3 jadeSoil = mix(dirt * 0.8, srgb(vec3(0.16, 0.36, 0.27)), 0.5 + 0.2 * mid);
 
   float slope = 1.0 - N.y;
   float rockW = max(vSplat.b, smoothstep(0.28, 0.45, slope + (mid - 0.5) * 0.15));
@@ -64,7 +64,7 @@ void main() {
 
   vec3 albedo = grass;
   float mask = 0.0;
-  vec3 fl = flowers(xz, vExtra.g * 0.35 * (1.0 - dirtW), mask);
+  vec3 fl = flowers(xz, vExtra.g * 0.18 * (1.0 - dirtW), mask);
   albedo = mix(albedo, fl, mask);
   albedo = mix(albedo, dirt, dirtW);
   albedo = mix(albedo, jadeSoil, jadeW);

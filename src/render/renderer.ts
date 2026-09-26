@@ -3,7 +3,7 @@
 //
 // Frame:  shadow depth → main HDR (MSAA) [sky, terrain, meshes, water] → resolve → bloom → composite
 
-import type { Device, Pipeline, Buffer, Texture, Sampler, VertexBufferLayout, BindGroupLayout, PipelineDesc } from './rhi/types';
+import type { Device, Pipeline, Buffer, Texture, Sampler, VertexBufferLayout, BindGroupLayout, PipelineDesc, RenderPass, BindGroup } from './rhi/types';
 import { SHADERS } from './shaders';
 import { MESH_VERTEX_STRIDE, ModelData } from '../assets/gltf';
 import { poseJoints, MAX_JOINTS, JOINT_TEXELS } from './animation';
@@ -12,6 +12,16 @@ import {
 } from '../core/math';
 import { hexToLinear } from '../core/materialModel';
 import type { TerrainGpu } from './terrainRenderer';
+
+interface RenderTargets {
+  w: number;
+  h: number;
+  persistent: boolean;
+  msaaColor: Texture;
+  msaaDepth: Texture;
+  hdr: Texture;
+  bloom: Texture[];
+}
 
 export interface GpuModel {
   name: string;
@@ -95,6 +105,12 @@ export interface SceneView {
   grid?: { cell: number; opacity: number };
   sky?: boolean;
   clearColor?: [number, number, number];
+  /** world-space decals: footprints, selection rings, order markers */
+  overlay?: { draw(pass: RenderPass, frameGroup: BindGroup): void } | null;
+  /** billboard particles / ribbons (VFX) */
+  particles?: { draw(pass: RenderPass, frameGroup: BindGroup): void } | null;
+  /** full-screen flash (lightning), 0..1 */
+  flash?: number;
 }
 
 const INSTANCE_FLOATS = 20;
@@ -170,7 +186,6 @@ export class Renderer {
   private shadowSampler: Sampler;
   private linearClamp: Sampler;
   private nearestClamp: Sampler;
-  private targets: { w: number; h: number; msaaColor: Texture; msaaDepth: Texture; hdr: Texture; bloom: Texture[] } | null = null;
   private hdrFormat: 'rgba16float' | 'rgba8unorm';
   private samples: number;
   stats = { drawCalls: 0, triangles: 0, instances: 0 };
@@ -282,6 +297,17 @@ export class Renderer {
     };
   }
 
+  /** Frame uniforms as a bind group for pipelines owned by other modules (overlay, particles). */
+  frameGroupAny(): BindGroup {
+    return this.device.createBindGroup(this.pipes.mesh, 0, [{ binding: 0, buffer: this.frameUBO }]);
+  }
+  get hdrColorFormat() {
+    return this.hdrFormat;
+  }
+  get sampleCount() {
+    return this.samples;
+  }
+
   createModel(data: ModelData): GpuModel {
     const d = this.device;
     const vb = d.createBuffer({ size: data.vertices.byteLength, usage: 'vertex', data: new Uint8Array(data.vertices), label: data.name });
@@ -291,14 +317,20 @@ export class Renderer {
     return { name: data.name, data, vb, ib, indexCount: data.indices.length, indexFormat: data.indices instanceof Uint32Array ? 'uint32' : 'uint16', skinned: data.joints.length > 0, animIndex };
   }
 
-  private ensureTargets() {
+  private targetCache = new Map<string, RenderTargets>();
+  private targetsFor(w: number, h: number, persistent: boolean): RenderTargets {
+    const key = `${w}x${h}`;
+    const hit = this.targetCache.get(key);
+    if (hit) return hit;
     const d = this.device;
-    const w = d.backbufferWidth, h = d.backbufferHeight;
-    if (this.targets && this.targets.w === w && this.targets.h === h) return this.targets;
-    if (this.targets) {
-      const t = this.targets;
-      [t.msaaColor, t.msaaDepth, t.hdr, ...t.bloom].forEach((x) => x.destroy());
-      (d as any).invalidateFramebuffers?.();
+    if (!persistent) {
+      // backbuffer resized: free the previous backbuffer-sized set
+      for (const [k, t] of this.targetCache) {
+        if (t.persistent) continue;
+        [t.msaaColor, t.msaaDepth, t.hdr, ...t.bloom].forEach((x) => x.destroy());
+        this.targetCache.delete(k);
+        (d as any).invalidateFramebuffers?.();
+      }
     }
     const bloom: Texture[] = [];
     let bw = w, bh = h;
@@ -307,17 +339,23 @@ export class Renderer {
       bh = Math.max(1, bh >> 1);
       bloom.push(d.createTexture({ width: bw, height: bh, format: this.hdrFormat, renderTarget: true, label: `bloom${i}` }));
     }
-    this.targets = {
-      w, h,
+    const t: RenderTargets = {
+      w, h, persistent,
       msaaColor: d.createTexture({ width: w, height: h, format: this.hdrFormat, sampleCount: this.samples, renderTarget: true, label: 'msaa-color' }),
       msaaDepth: d.createTexture({ width: w, height: h, format: 'depth24', sampleCount: this.samples, renderTarget: true, label: 'msaa-depth' }),
       hdr: d.createTexture({ width: w, height: h, format: this.hdrFormat, renderTarget: true, label: 'hdr' }),
       bloom,
     };
-    return this.targets;
+    this.targetCache.set(key, t);
+    return t;
   }
 
-  private writeFrame(view: SceneView, lightVP: M4, shadowMatrix: M4) {
+  /** Offscreen colour target the scene can be rendered into (cameo portraits, UI thumbnails). */
+  createOutputTexture(w: number, h: number): Texture {
+    return this.device.createTexture({ width: w, height: h, format: 'rgba8unorm', renderTarget: true, label: 'output' });
+  }
+
+  private writeFrame(view: SceneView, lightVP: M4, shadowMatrix: M4, vw: number, vh: number) {
     const L = view.lighting ?? DEFAULT_LIGHTING;
     const f = this.frameData;
     const vp = m4Mul(view.camera.proj, view.camera.view);
@@ -344,7 +382,7 @@ export class Renderer {
     v4(0.8, 0.6, 0.06, 1.3);
     v4(1 / this.shadowSize, 0.06, 0.0006, 1);
     const d = this.device;
-    v4(d.backbufferWidth, d.backbufferHeight, 1 / d.backbufferWidth, 1 / d.backbufferHeight);
+    v4(vw, vh, 1 / vw, 1 / vh);
     v4(view.grid?.cell ?? 3, view.grid?.opacity ?? 0, 0, 0);
     const teams = view.teamColors ?? [0x2f6fd0, 0xc8322b, 0x2e9e5b, 0xe0a82e, 0x7a4bc2, 0xd9d2c0, 0x30b0c0, 0xe06a2e];
     for (let i = 0; i < 8; i++) col(teams[i % teams.length], 1);
@@ -379,13 +417,14 @@ export class Renderer {
     return { lightVP, shadowMatrix: m4Mul(bias, lightVP) };
   }
 
-  render(view: SceneView) {
+  render(view: SceneView, output?: Texture) {
     const d = this.device;
-    const tg = this.ensureTargets();
+    const tw = output ? output.width : d.backbufferWidth, th = output ? output.height : d.backbufferHeight;
+    const tg = this.targetsFor(tw, th, !!output);
     this.arena.reset();
     this.stats = { drawCalls: 0, triangles: 0, instances: 0 };
     const { lightVP, shadowMatrix } = this.computeShadow(view);
-    this.writeFrame(view, lightVP, shadowMatrix);
+    this.writeFrame(view, lightVP, shadowMatrix, tw, th);
     const L = view.lighting ?? DEFAULT_LIGHTING;
 
     // ---- build instance + joint data, grouped by model
@@ -503,6 +542,8 @@ export class Renderer {
         pass.setVertexBuffer(0, w.vb);
         pass.draw(w.vertexCount);
       }
+      if (view.overlay) view.overlay.draw(pass, this.frameGroupAny());
+      if (view.particles) view.particles.draw(pass, this.frameGroupAny());
       pass.end();
     }
 
@@ -525,9 +566,9 @@ export class Renderer {
 
     // ---- composite to backbuffer
     {
-      const pass = d.beginRenderPass({ label: 'composite', color: [{ texture: null, load: 'clear', clearColor: [0, 0, 0, 1] }] });
+      const pass = d.beginRenderPass({ label: 'composite', color: [{ texture: output ?? null, load: 'clear', clearColor: [0, 0, 0, 1] }] });
       pass.setPipeline(this.pipes.composite);
-      const u = this.arena.push(new Float32Array([L.exposure, L.saturation, L.contrast, L.bloom, L.warmth[0], L.warmth[1], L.warmth[2], L.vignette, view.time, 1, 0, 0]));
+      const u = this.arena.push(new Float32Array([L.exposure, L.saturation, L.contrast, L.bloom, L.warmth[0], L.warmth[1], L.warmth[2], output ? L.vignette * 0.6 : L.vignette, view.time, 1, view.flash ?? 0, 0]));
       pass.setBindGroup(0, d.createBindGroup(this.pipes.composite, 0, [
         { binding: 0, buffer: this.arena.buffer, offset: u.offset, size: u.size },
         { binding: 1, texture: tg.hdr, sampler: this.linearClamp },

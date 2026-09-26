@@ -208,14 +208,22 @@ void main() {
     col += base * pc.rgb * emissive * flick;
   }
 
-  // selection highlight / hover
-  if (vInst.z > 0.0) {
+  // placement ghost: 2 = valid (jade green), 3 = blocked (red)
+  if (vInst.z >= 1.5) {
+    vec3 g = vInst.z < 2.5 ? vec3(0.35, 1.0, 0.55) : vec3(1.0, 0.28, 0.2);
+    float lum = dot(col, vec3(0.3, 0.5, 0.2));
+    col = mix(col, g * (0.25 + lum * 1.2), 0.6) + g * (0.08 + 0.06 * sin(frame.cameraPos.w * 6.0));
+  } else if (vInst.z > 0.0 && vInst.z < 1.5) {
     float rim = pow(1.0 - max(dot(N, V), 0.0), 2.0);
     col += tc * rim * vInst.z * 1.5 + vec3(0.04) * vInst.z;
   }
-  // construction edge glow
+  // construction edge glow (jade→gold); highlight < 0 marks a collapsing building (embers)
   float edge = vInst.w - vObjPos.y;
-  if (edge < 0.25) col += mix(vec3(0.5, 1.4, 1.2), vec3(1.6, 1.2, 0.5), edge * 4.0) * (1.0 - edge * 4.0) * 2.5;
+  if (edge < 0.25) {
+    vec3 glow = vInst.z < -0.5 ? mix(vec3(2.2, 0.55, 0.1), vec3(0.6, 0.12, 0.03), edge * 4.0) : mix(vec3(0.5, 1.4, 1.2), vec3(1.6, 1.2, 0.5), edge * 4.0);
+    col += glow * (1.0 - edge * 4.0) * 2.5;
+  }
+  if (vInst.z < -0.5) col *= 0.75; // scorched while collapsing
 
   col = applyFog(col, vWorldPos);
   outColor = vec4(col, 1.0);

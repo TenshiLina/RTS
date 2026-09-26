@@ -1,4 +1,4 @@
-import type { Platform, InputState, Surface, PointerState } from '../platform';
+import type { Platform, InputState, Surface, PointerState, GlyphFaceRequest, GlyphAtlasData, GlyphFace } from '../platform';
 
 class WebInput implements InputState {
   pointer: PointerState = { x: 0, y: 0, buttons: 0, wheel: 0, dx: 0, dy: 0, inside: false };
@@ -109,6 +109,72 @@ export class WebPlatform implements Platform {
     const r = await fetch(this.base + path);
     if (!r.ok) throw new Error(`load ${path}: ${r.status}`);
     return r.text();
+  }
+  async rasterizeGlyphs(faces: GlyphFaceRequest[]): Promise<GlyphAtlasData> {
+    const fontSet = (document as any).fonts;
+    if (fontSet?.load) {
+      await Promise.all(faces.map((f) => fontSet.load(`${f.weight} ${f.size}px "${f.family}"`, f.chars).catch(() => null)));
+    }
+    const W = 1024;
+    let H = 256;
+    const cv = document.createElement('canvas');
+    const ctx = cv.getContext('2d', { willReadFrequently: true })!;
+    // first pass: measure + shelf-pack
+    type Job = { face: string; ch: string; font: string; w: number; h: number; asc: number; left: number; adv: number; x: number; y: number };
+    const jobs: Job[] = [];
+    const out: Record<string, GlyphFace> = {};
+    let x = 1, y = 1, shelf = 0;
+    for (const f of faces) {
+      const font = `${f.weight} ${f.size}px "${f.family}", "Noto Serif SC", Georgia, serif`;
+      ctx.font = font;
+      const m = ctx.measureText('Hg国');
+      const asc = Math.ceil(m.fontBoundingBoxAscent ?? f.size * 0.8);
+      const desc = Math.ceil(m.fontBoundingBoxDescent ?? f.size * 0.25);
+      out[f.name] = { size: f.size, lineHeight: Math.ceil((asc + desc) * 1.12), ascent: asc, glyphs: {} };
+      for (const ch of new Set([...f.chars])) {
+        const gm = ctx.measureText(ch);
+        const left = Math.ceil(gm.actualBoundingBoxLeft ?? 0) + 1;
+        const w = Math.ceil((gm.actualBoundingBoxRight ?? gm.width) + left) + 2;
+        const h = asc + desc + 2;
+        if (x + w + 1 > W) {
+          x = 1;
+          y += shelf + 1;
+          shelf = 0;
+        }
+        jobs.push({ face: f.name, ch, font, w, h, asc, left, adv: gm.width, x, y });
+        x += w + 1;
+        shelf = Math.max(shelf, h);
+      }
+    }
+    H = 1;
+    while (H < y + shelf + 2) H *= 2;
+    cv.width = W;
+    cv.height = H;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'alphabetic';
+    for (const j of jobs) {
+      ctx.font = j.font;
+      ctx.fillText(j.ch, j.x + j.left, j.y + j.asc + 1);
+      out[j.face].glyphs[j.ch] = { x: j.x, y: j.y, w: j.w, h: j.h, xoff: -j.left, yoff: 0, adv: j.adv };
+    }
+    const img = ctx.getImageData(0, 0, W, H).data;
+    const pixels = new Uint8Array(W * H * 4);
+    for (let i = 0; i < W * H; i++) {
+      pixels[i * 4] = 255;
+      pixels[i * 4 + 1] = 255;
+      pixels[i * 4 + 2] = 255;
+      pixels[i * 4 + 3] = img[i * 4 + 3];
+    }
+    return { width: W, height: H, pixels, faces: out };
+  }
+  private cursor = '';
+  setCursor(kind: 'default' | 'select' | 'attack' | 'move' | 'place' | 'power' | 'sell' | 'harvest') {
+    const css = { default: 'default', select: 'pointer', attack: 'crosshair', move: 'default', place: 'copy', power: 'crosshair', sell: 'not-allowed', harvest: 'cell' }[kind];
+    if (css !== this.cursor) {
+      this.cursor = css;
+      this.canvas.style.cursor = css;
+    }
   }
   storageGet(key: string) {
     try {

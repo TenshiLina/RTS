@@ -4,7 +4,7 @@ layout(location = 0) in vec2 vUV;
 layout(set = 0, binding = 0) uniform CompositeUniforms {
   vec4 grade;   // x = exposure, y = saturation, z = contrast, w = bloom strength
   vec4 tint;    // rgb lift/warmth multiplier, w = vignette
-  vec4 misc;    // x = time, y = dither, zw = unused
+  vec4 misc;    // x = time, y = dither, z = flash, w = unused
 } comp;
 layout(set = 0, binding = 1) uniform sampler2D uHDR;
 layout(set = 0, binding = 2) uniform sampler2D uBloom;
@@ -25,6 +25,7 @@ void main() {
   c = clamp((c - 0.5) * comp.grade.z + 0.5, 0.0, 1.0);
   vec2 q = vUV - 0.5;
   c *= 1.0 - dot(q, q) * comp.tint.w;
+  c = mix(c, vec3(1.0, 0.98, 0.94), clamp(comp.misc.z, 0.0, 1.0));
   c = pow(c, vec3(1.0 / 2.2));
   // blue-noise-ish dither to kill banding in skies/fog
   float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
