@@ -75,8 +75,8 @@ for i in range(seg):
 ly = qy1 - (load / 300) * (qy1 - qy0)
 d.polygon([(qx0 - 8, ly - 6), (qx0 - 1, ly), (qx0 - 8, ly + 6)], fill=GOLD)
 frame((qx0 - 2, qy0 - 3, qx1 + 2, qy1 + 3), 3)
-d.text((qx0 - 2, qy1 + 8), '气', font=f_cjk_s, fill=INK)
-d.text((qx0 + 16, qy1 + 10), 'Qi', font=f_small, fill=GOLD)
+d.text((qx0 - 1, 26), '气', font=f_cjk_s, fill=INK)
+d.text((qx0 + 16, 28), 'Qi', font=f_small, fill=GOLD)
 
 # Mandate gauge (ring with tier pips)
 cx, cy, r = 415, 118, 38
@@ -107,7 +107,7 @@ for i, (hz, name) in enumerate(tabs):
     on = i == 0
     d.rectangle((x0 + 2, 426, x0 + tw - 2, 470), fill=VERMILION if on else (60, 36, 28), outline=GOLD if on else GOLD_DIM)
     d.text((x0 + 10, 432), hz, font=f_cjk, fill=INK)
-    d.text((x0 + 38, 440), name[:9], font=f_small, fill=INK if on else (190, 170, 140))
+    d.text((x0 + 36, 440), name, font=ImageFont.truetype(SANS, 12), fill=INK if on else (190, 170, 140))
     if i == 2:
         d.ellipse((x0 + tw - 20, 422, x0 + tw - 4, 438), fill=GOLD)
         d.text((x0 + tw - 15, 423), '3', font=f_small, fill=(0, 0, 0))

@@ -8,6 +8,13 @@ modern weapons. Visual target: *Red Alert 2, remastered*.
 and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the portability plan (WebGL2 now;
 Metal / Vulkan / D3D11 and iOS / macOS / Windows / Linux later).
 
+![Tier-1 Azure Dynasty base in Peach Garden Valley](docs/screenshots/02_diorama_base.jpg)
+
+| | |
+|---|---|
+| ![Structures](docs/screenshots/sheet_structures.jpg) | ![Units](docs/screenshots/sheet_units.jpg) |
+| ![Environment](docs/screenshots/sheet_environment.jpg) | ![C&C-style sidebar mockup built from real cameo renders](docs/screenshots/40_sidebar_mockup.jpg) |
+
 ## Run
 ```bash
 npm install
@@ -24,7 +31,8 @@ Controls: drag = orbit · right/middle-drag = pan · wheel = zoom · WASD = move
 | `npm run dev` / `build` | Viewer dev server / production build (`dist/`) |
 | `npm test` | Unit tests: mesh winding, fixed-point determinism, content integrity |
 | `npm run shaders:validate` | Compile every shader to SPIR-V (the Vulkan/Metal/D3D11 path) |
-| `npx tsx tools/screenshot.ts <dir> "<query>" name …` | Headless screenshots of the viewer |
+| `npx tsx tools/screenshot.ts <dir> "<query>" name …` | Headless screenshots of the viewer (`cameo=1` renders sidebar portraits) |
+| `python3 tools/pack-hosted.py <dir>` | Package `dist/` for text-only static hosts (models as base64) |
 
 ## Layout
 ```

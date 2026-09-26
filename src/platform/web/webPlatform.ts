@@ -96,6 +96,13 @@ export class WebPlatform implements Platform {
   async loadBinary(path: string) {
     const r = await fetch(this.base + path);
     if (!r.ok) throw new Error(`load ${path}: ${r.status}`);
+    // Hosts that only serve text types get base64 bundles (`*.b64.txt`) — see tools/pack-hosted.py
+    if (path.endsWith('.b64.txt')) {
+      const bin = atob((await r.text()).trim());
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out.buffer;
+    }
     return r.arrayBuffer();
   }
   async loadText(path: string) {
