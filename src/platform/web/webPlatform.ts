@@ -1,4 +1,4 @@
-import type { Platform, InputState, Surface, PointerState, GlyphFaceRequest, GlyphAtlasData, GlyphFace } from '../platform';
+import type { AudioOutput, Platform, InputState, Surface, PointerState, GlyphFaceRequest, GlyphAtlasData, GlyphFace } from '../platform';
 
 class WebInput implements InputState {
   pointer: PointerState = { x: 0, y: 0, buttons: 0, wheel: 0, dx: 0, dy: 0, inside: false };
@@ -54,7 +54,77 @@ class WebInput implements InputState {
   }
 }
 
+/** WebAudio backend: buffers are created lazily once the context exists (after a gesture). */
+class WebAudio implements AudioOutput {
+  private ctx: AudioContext | null = null;
+  private master: GainNode | null = null;
+  private pcm = new Map<string, { data: Float32Array; rate: number }>();
+  private buffers = new Map<string, AudioBuffer>();
+  private voices = 0;
+  volume = 0.8;
+  constructor() {
+    const unlock = () => {
+      try {
+        if (!this.ctx) {
+          const AC = window.AudioContext ?? (window as any).webkitAudioContext;
+          if (!AC) return;
+          this.ctx = new AC();
+          this.master = this.ctx.createGain();
+          this.master.gain.value = this.volume;
+          // gentle limiter so stacked explosions don't clip
+          const comp = this.ctx.createDynamicsCompressor();
+          comp.threshold.value = -14;
+          comp.ratio.value = 6;
+          this.master.connect(comp).connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') void this.ctx.resume();
+      } catch {
+        /* no audio available: stay silent */
+      }
+    };
+    for (const ev of ['pointerdown', 'keydown', 'touchstart']) window.addEventListener(ev, unlock, { capture: true });
+  }
+  get ready() {
+    return !!this.ctx && this.ctx.state === 'running';
+  }
+  register(name: string, pcm: Float32Array, sampleRate: number) {
+    this.pcm.set(name, { data: pcm, rate: sampleRate });
+  }
+  private buffer(name: string) {
+    let b = this.buffers.get(name);
+    if (b || !this.ctx) return b;
+    const src = this.pcm.get(name);
+    if (!src) return undefined;
+    b = this.ctx.createBuffer(1, src.data.length, src.rate);
+    b.getChannelData(0).set(src.data);
+    this.buffers.set(name, b);
+    return b;
+  }
+  play(name: string, opts: { volume?: number; pan?: number; rate?: number } = {}) {
+    if (!this.ready || this.voices > 40) return;
+    const ctx = this.ctx!;
+    const b = this.buffer(name);
+    if (!b) return;
+    const src = ctx.createBufferSource();
+    src.buffer = b;
+    src.playbackRate.value = opts.rate ?? 1;
+    const g = ctx.createGain();
+    g.gain.value = opts.volume ?? 1;
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = Math.max(-1, Math.min(1, opts.pan ?? 0));
+    src.connect(g).connect(pan).connect(this.master!);
+    this.voices++;
+    src.onended = () => this.voices--;
+    src.start();
+  }
+  setVolume(v: number) {
+    this.volume = v;
+    if (this.master) this.master.gain.value = v;
+  }
+}
+
 export class WebPlatform implements Platform {
+  readonly audio: AudioOutput = new WebAudio();
   readonly name = 'web';
   readonly input: InputState;
   readonly surface: Surface;

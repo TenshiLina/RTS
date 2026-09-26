@@ -64,10 +64,23 @@ export interface GlyphAtlasData {
   faces: Record<string, GlyphFace>;
 }
 
+/** Sound output. PCM is synthesised by the game (src/audio) and handed over once; playback is
+ *  fire-and-forget. Web: WebAudio (unlocked by the first user gesture). Native: CoreAudio /
+ *  XAudio2 / miniaudio with the same buffers. */
+export interface AudioOutput {
+  /** false until the device may produce sound (browsers require a user gesture) */
+  readonly ready: boolean;
+  register(name: string, pcm: Float32Array, sampleRate: number): void;
+  play(name: string, opts?: { volume?: number; pan?: number; rate?: number }): void;
+  setVolume(v: number): void;
+  readonly volume: number;
+}
+
 export interface Platform {
   readonly name: string;
   readonly surface: Surface;
   readonly input: InputState;
+  readonly audio: AudioOutput;
   now(): number;
   requestFrame(cb: (timeSec: number) => void): void;
   loadBinary(path: string): Promise<ArrayBuffer>;

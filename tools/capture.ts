@@ -29,10 +29,12 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message.slice(0, 2000)));
 page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('ERR_CERT') && !m.text().includes('404')) console.log('[console]', m.text().slice(0, 1000)); });
-await page.goto(`http://localhost:5173/?manual=1&capture=1&${queryArg ?? 'start=easy'}`, { waitUntil: 'load' });
+await page.goto(`${process.env.GAME_URL ?? 'http://localhost:5173/'}?manual=1&capture=1&${queryArg ?? 'start=easy'}`, { waitUntil: 'load' });
 await page.waitForFunction('window.__game?.ready', null, { timeout: 180000 });
 
-const script = readFileSync(scenarioPath, 'utf8');
+let script = readFileSync(scenarioPath, 'utf8');
+// '//STAGE' pulls in the shared staging helpers (tools/scenarios/_stage.js)
+if (script.startsWith('//STAGE')) script = readFileSync(join(scenarioPath, '..', '_stage.js'), 'utf8') + '\n' + script;
 const cfg = (await page.evaluate(`(async () => { const g = window.__game.game; const step = window.__step; ${script} })()`)) as { frames?: number; dt?: number; sheetEvery?: number; label?: string } | undefined;
 const frames = parseInt(framesArg ?? '') || cfg?.frames || 90;
 const dt = dtArg ? eval(dtArg) : cfg?.dt ?? 1 / 30;

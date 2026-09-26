@@ -109,7 +109,9 @@ void main() {
   float crystal = ridge(re * 5.0) * 0.65 + ridge(re * 13.0 + 4.0) * 0.35;
   float thr = 1.0 - gfx.g * 1.7;
   float frostW = smoothstep(thr, thr + 0.1, crystal * 0.75 + 0.25 * edgeN);
-  albedo = mix(albedo, srgb(vec3(0.8, 0.88, 0.95)), frostW);
+  // hoarfrost: blue-white with the ground's texture still showing through (not a flat white decal)
+  vec3 frostCol = srgb(vec3(0.66, 0.78, 0.9)) * (0.82 + 0.3 * crystal);
+  albedo = mix(albedo, frostCol, frostW * (0.75 + 0.25 * smoothstep(0.4, 0.9, gfx.g)));
   rough = mix(rough, 0.3, frostW);
 
   float shadow = sampleShadow(uShadow, vWorldPos, N);
@@ -122,7 +124,8 @@ void main() {
   float cracks = pow(ridge(re * 2.2 + 7.0), 7.0) + pow(ridge(re * 5.5 + 3.0), 9.0) * 0.6;
   float heat = gfx.a;
   float flick = 0.75 + 0.25 * sin(t * 7.0 + xz.x * 2.3 + xz.y * 1.7);
-  col += vec3(3.2, 0.95, 0.18) * heat * (cracks * 1.8 + 0.12 + 0.3 * vnoise(xz * 6.0 - t)) * flick;
+  // (sparse: charred ground stays dark between the glowing cracks)
+  col += vec3(2.4, 0.6, 0.1) * heat * heat * (cracks * 1.6 + 0.04) * flick;
 
   // jade glow veins
   if (jadeW > 0.01) {

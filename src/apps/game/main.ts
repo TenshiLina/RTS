@@ -10,6 +10,7 @@ import { Renderer } from '../../render/renderer';
 import { loadModels } from '../../game/assets';
 import { Game } from '../../game/game';
 import { HUD_HANZI } from '../../game/hud';
+import { buildSoundLibrary, SAMPLE_RATE } from '../../audio/synth';
 import type { Difficulty } from '../../sim/ai';
 import type { UIRenderer } from '../../render/ui';
 import type { GlyphAtlasData, GlyphFaceRequest } from '../../platform/platform';
@@ -51,19 +52,25 @@ async function main() {
   const device = new WebGL2Device(canvas, { preserveDrawingBuffer: params.has('capture') });
   platform.surface.onResize((w, h) => device.resize(w, h));
   device.resize(platform.surface.width, platform.surface.height);
-  const renderer = new Renderer(device, { samples: 4 });
+  // ?msaa=1 speeds up software-rendered captures; players always get 4× MSAA
+  const renderer = new Renderer(device, { samples: parseInt(params.get('msaa') ?? '4') || 4 });
   const uiScale = () => Math.max(0.75, Math.min(2, platform.surface.dpr * Math.min(1, platform.surface.height / platform.surface.dpr / 860)));
 
   bootMsg('Carving the models…');
   const lib = await loadModels(platform, renderer, (d, n) => bootMsg(`Carving the models… ${d}/${n}`));
+  bootMsg('Tuning the instruments…');
+  await new Promise((r) => setTimeout(r, 0));
+  const t0 = platform.now();
+  for (const [name, pcm] of buildSoundLibrary()) platform.audio.register(name, pcm, SAMPLE_RATE);
+  (window as any).__soundSynthMs = Math.round((platform.now() - t0) * 1000);
   bootMsg('Inking the characters…');
   let glyphScale = uiScale();
   let atlas: GlyphAtlasData = await platform.rasterizeGlyphs(glyphFaces(glyphScale));
 
   let game: Game;
   let title = !params.has('start');
-  const newGame = (difficulty: Difficulty, demo: boolean) => {
-    const g = new Game(platform, renderer, lib, { difficulty, demo, seed: demo ? 3 : 7 + Math.floor(Math.random() * 1000) });
+  const newGame = (difficulty: Difficulty, demo: boolean, gallery = false) => {
+    const g = new Game(platform, renderer, lib, { difficulty, demo, gallery, seed: demo ? 3 : 7 + Math.floor(Math.random() * 1000) });
     g.ui.setGlyphs(atlas);
     if (!demo) g.buildCameos(glyphScale);
     g.hud.onRestart = () => {
@@ -84,7 +91,7 @@ async function main() {
     ui.text('天命', cx, top, 'cjk80', 0xd9ad52, 1, { align: 'center' });
     ui.text('MANDATE OF HEAVEN', cx, top + 104 * s, 'disp48', 0xefe4c9, 1, { align: 'center' });
     ui.text('An East Asian fantasy RTS · Prototype M1 — Tier 1 skirmish', cx, top + 166 * s, 'ui16', 0xd8ccb0, 1, { align: 'center' });
-    const btns = ['Skirmish · Easy', 'Skirmish · Normal'];
+    const btns = ['Skirmish · Easy', 'Skirmish · Normal', 'Magic Gallery'];
     const bw = 260 * s, bh = 46 * s;
     const p = platform.input.pointer;
     hoverBtn = -1;
@@ -92,22 +99,37 @@ async function main() {
       const x = cx - bw / 2, y = top + 220 * s + i * (bh + 14 * s);
       const hov = p.x >= x && p.x < x + bw && p.y >= y && p.y < y + bh;
       if (hov) hoverBtn = i;
-      ui.gradient(x, y, bw, bh, hov ? 0xc0382a : 0x5a2a1e, hov ? 0x7d1f14 : 0x2e1612, 0.95);
+      const gal = i === 2;
+      ui.gradient(x, y, bw, bh, hov ? (gal ? 0x2f5f9a : 0xc0382a) : gal ? 0x1f3350 : 0x5a2a1e, hov ? (gal ? 0x173050 : 0x7d1f14) : gal ? 0x121c2c : 0x2e1612, 0.95);
       ui.outline(x, y, bw, bh, 2 * s, hov ? 0xffe6a0 : 0xd9ad52, 1);
       ui.text(label, cx, y + 11 * s, 'disp22', 0xfff2d8, 1, { align: 'center' });
     });
     const help = [
       'Deploy your Imperial Caravan (select it, press D or click it again), then build from the sidebar.',
       'Left-click select · drag to box-select · right-click to move / attack / harvest · A = attack-move',
-      'S stop · X sell · H home · Space last alert · Ctrl+1–9 groups · wheel zoom · arrows / screen edge scroll · P pause',
+      'S stop · X sell · H home · Space last alert · Ctrl+1–9 groups · wheel zoom · arrows / edge scroll · P pause · M sound',
       'Mandate (天命) grows from standing buildings × Harmony; spend it on Heaven’s Wrath.',
     ];
     help.forEach((l, i) => ui.text(l, cx, H - (110 - i * 22) * s, 'ui14', 0xcfc2a4, 0.95, { align: 'center' }));
   };
+  // gallery caption band + way back
+  const drawGallery = (ui: UIRenderer, s: number) => {
+    const gal = game.gallery;
+    if (!gal) return;
+    const W = ui.width;
+    ui.gradient(0, 0, W, 96 * s, 0x000000, 0x000000, 0.7, 0);
+    ui.text(gal.caption, W / 2, 14 * s, 'disp22', 0xf3e2b8, 1, { align: 'center' });
+    ui.text(gal.sub, W / 2, 48 * s, 'ui14', 0xd8ccb0, 0.95, { align: 'center' });
+    ui.text('Esc — back to the title  ·  wheel — zoom  ·  M — sound', W / 2, ui.height - 28 * s, 'ui13', 0xcfc2a4, 0.85, { align: 'center' });
+  };
 
   game = newGame('normal', true);
   game.drawOverlay = drawTitle;
-  if (!title) {
+  if (params.has('gallery')) {
+    title = false;
+    game = newGame('normal', false, true);
+    game.drawOverlay = drawGallery;
+  } else if (!title) {
     const diff = params.get('start') === 'easy' ? 'easy' : 'normal';
     game = newGame(diff as Difficulty, false);
   }
@@ -157,9 +179,17 @@ async function main() {
       });
     }
     if (title && platform.input.clicked & 1 && hoverBtn >= 0) {
-      const diff: Difficulty = hoverBtn === 0 ? 'easy' : 'normal';
       title = false;
-      game = newGame(diff, false);
+      if (hoverBtn === 2) {
+        game = newGame('normal', false, true);
+        game.drawOverlay = drawGallery;
+      } else game = newGame(hoverBtn === 0 ? 'easy' : 'normal', false);
+      platform.input.endFrame();
+    }
+    if (game.gallery && platform.input.pressed.has('Escape')) {
+      title = true;
+      game = newGame('normal', true);
+      game.drawOverlay = drawTitle;
       platform.input.endFrame();
     }
     game.frame(dt, s);

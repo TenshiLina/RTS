@@ -153,7 +153,7 @@ export type SimEvent =
   | { e: 'attack'; id: number; target: number }
   | { e: 'fire'; id: number; proj: number; kind: string; x: number; z: number; tx: number; tz: number }
   | { e: 'melee'; id: number; target: number; x: number; z: number }
-  | { e: 'impact'; kind: string; x: number; z: number; splash: number; owner: number }
+  | { e: 'impact'; kind: string; x: number; z: number; splash: number; owner: number; proj: number; target: number }
   | { e: 'damage'; id: number; amount: number }
   | { e: 'death'; id: number; typeId: string; kind: EntityKind; x: number; z: number; owner: number; killer: number }
   | { e: 'deploying'; id: number }
@@ -917,7 +917,7 @@ export class World {
       p.x = p.tgtX;
       p.z = p.tgtZ;
       p.alive = false;
-      this.events.push({ e: 'impact', kind: p.typeId, x: p.x, z: p.z, splash: w.splash, owner: p.owner });
+      this.events.push({ e: 'impact', kind: p.typeId, x: p.x, z: p.z, splash: w.splash, owner: p.owner, proj: p.id, target: p.targetId });
       if (w.splash > 0) {
         const r2 = w.splash * w.splash;
         for (const e of this.entities) {

@@ -142,7 +142,8 @@ const cells = (c: number) => Math.round(c * LEPTONS);
 const metres = (m: number) => Math.round((m / 3) * LEPTONS);
 const PROJ_SPEED: Record<ProjectileKind, number> = {
   none: 0, arrow: cells(22) / TICK_HZ, talisman: cells(9) / TICK_HZ,
-  fire: cells(11) / TICK_HZ, frost: cells(19) / TICK_HZ, water: cells(24) / TICK_HZ, gale: cells(28) / TICK_HZ,
+  // slow enough to read in flight at RTS zoom (a fire serpent crosses its range in ~0.7 s)
+  fire: cells(7) / TICK_HZ, frost: cells(12) / TICK_HZ, water: cells(20) / TICK_HZ, gale: cells(16) / TICK_HZ,
 };
 const pctTable = (vs: any): Record<string, number> => Object.fromEntries(Object.entries(vs ?? {}).map(([k, v]) => [k, Math.round((v as number) * 100)]));
 

@@ -68,7 +68,7 @@ describe('elemental schools', () => {
       s.run(1);
     }
     expect(s.events.some((e) => e.e === 'spell' && e.spell === 'surge')).toBe(true);
-    s.run(20); // the wave front reaches them and shoves them away from the caster
+    s.run(30); // the wave front reaches them and shoves them away from the caster
     const pushed = s.theirs.filter((u, i) => u.alive && u.x > before[i] + L / 2).length;
     expect(pushed).toBeGreaterThan(0);
     expect(s.theirs.some((u) => u.alive && u.wetTicks > 0)).toBe(true);

@@ -125,6 +125,7 @@ export class Hud {
         if (units.some((u) => g.world.utype(u).deploysInto)) btn(i++, 'Deploy', 'deploy');
         btn(i++, 'Stop', 'stop');
         if (units.some((u) => g.world.utype(u).weapon)) btn(i++, 'Attack', 'amove');
+        if (units.some((u) => g.world.utype(u).spell)) btn(i++, 'Cast Q', 'cast');
       }
     }
 
@@ -217,6 +218,7 @@ export class Hud {
     if (key === 'home') g.jumpHome();
     if (key === 'deploy') for (const u of g.selectedUnits()) if (g.world.utype(u).deploysInto) g.issue({ t: 'deploy', id: u.id });
     if (key === 'stop') g.issue({ t: 'stop', ids: g.selectedUnits().map((u) => u.id) });
+    if (key === 'cast') g.beginCast();
     if (key === 'amove') g.mode = { kind: 'amove' };
   }
 
@@ -341,7 +343,7 @@ export class Hud {
     }
     // mode hint near cursor
     const p = g.platform.input.pointer;
-    const hint = g.mode.kind === 'place' ? `Place ${g.content.get(g.mode.typeId)?.name} · right-click to cancel` : g.mode.kind === 'power' ? "Choose where Heaven's Wrath strikes · right-click to cancel" : g.mode.kind === 'sell' ? 'Sell: click one of your structures (50% refund)' : g.mode.kind === 'amove' ? 'Attack-move: click a destination' : '';
+    const hint = g.mode.kind === 'place' ? `Place ${g.content.get(g.mode.typeId)?.name} · right-click to cancel` : g.mode.kind === 'power' ? "Choose where Heaven's Wrath strikes · right-click to cancel" : g.mode.kind === 'sell' ? 'Sell: click one of your structures (50% refund)' : g.mode.kind === 'amove' ? 'Attack-move: click a destination' : g.mode.kind === 'cast' ? 'Choose where to cast · right-click to cancel' : '';
     if (hint && !inside(L.side, p.x, p.y)) ui.text(hint, p.x + 18 * s, p.y + 16 * s, 'ui14', 0xfff2d8);
     if (g.paused && !g.over) {
       ui.rect(0, H / 2 - 34 * s, W - sw, 68 * s, 0x000000, 0.45);
@@ -474,7 +476,15 @@ export class Hud {
       const extra = first.kind === 'unit' && g.world.utype(first).harvester ? ` · cargo ${first.cargo}` : '';
       ui.text(`${Math.max(0, first.hp)}/${first.maxHp}${extra}`, x + 280 * s, y + 27 * s, 'ui12', MUTED);
     }
-    for (const b of this.L.selButtons) this.button(b.rect, b.label, s, false);
+    // signature spell of the selected casters: name + readiness
+    const casters = sel.filter((e) => e.kind === 'unit' && g.world.utype(e).spell);
+    if (casters.length) {
+      const sp = g.world.utype(casters[0]).spell!;
+      const cd = Math.min(...casters.map((e) => e.spellCd)) / 15;
+      ui.text(`${sp.hanzi} ${sp.name}`, x + 122 * s, y + 42 * s, 'ui12', GOLD);
+      ui.text(cd > 0 ? `${Math.ceil(cd)} s` : 'ready', x + 280 * s, y + 42 * s, 'ui12', cd > 0 ? MUTED : JADE);
+    }
+    for (const b of this.L.selButtons) this.button(b.rect, b.label, s, g.mode.kind === 'cast' && b.key === 'cast');
   }
 
   private drawWorldBars(s: number) {

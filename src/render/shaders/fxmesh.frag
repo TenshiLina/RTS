@@ -84,7 +84,7 @@ void main() {
     // FIRE shell: flames licking up a column / whirl
     float n = vnoise(vec2(vUV.x * 9.0 + seed * 7.0, vUV.y * 3.0 - t * 4.5)) * 0.65 + vnoise(vec2(vUV.x * 21.0, vUV.y * 7.0 - t * 8.0)) * 0.35;
     float heat = (1.05 - vUV.y) * (0.5 + 0.7 * n);
-    col = fireRamp(heat) * vColor.rgb * 2.2;
+    col = fireRamp(heat) * vColor.rgb * 1.1;
     a = smoothstep(0.12, 0.45, heat) * fade;
   } else {
     // ENERGY: fresnel glow (wards, charged domes)

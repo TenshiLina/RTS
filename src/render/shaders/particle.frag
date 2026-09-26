@@ -48,7 +48,7 @@ void main() {
     } else if (mode == 10) {   // flame tail: flickering tongue that thins toward the tail
       float n = vnoise(vec2(x * 2.0 + seed * 11.0, s * 1.3 - t * 7.0)) * 0.65 + vnoise(vec2(x * 5.0, s * 3.1 - t * 11.0)) * 0.35;
       float prof = smoothstep(1.0, 0.1, abs(x) + (n - 0.5) * 0.7);
-      float heat = prof * (1.15 - age) * (0.65 + 0.5 * n);
+      float heat = prof * (1.0 - age * 0.9) * (0.6 + 0.45 * n);
       rgb = fireRamp(heat) * vColor.rgb;
       a = smoothstep(0.05, 0.35, heat);
       dir = vec2(n - 0.5, 0.6);
@@ -77,7 +77,8 @@ void main() {
     a = tex.a;
     rgb = tex.rgb;
     if (mode == 1) {
-      float heat = a * (1.25 - vLocal.y * 0.85) * (1.0 - age * 0.55);
+      // white-hot only in the dense base of young flames; most of the tongue is orange → red
+      float heat = a * (0.98 - vLocal.y * 0.75) * (1.0 - age * 0.6);
       rgb = fireRamp(heat);
       a = smoothstep(0.03, 0.3, a);
     } else if (mode == 2) {
