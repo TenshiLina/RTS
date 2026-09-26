@@ -117,7 +117,32 @@ async function main() {
   document.getElementById('boot')!.remove();
   let last = platform.now();
   let frames = 0;
+  // A bug in one frame must never freeze the game: schedule the next frame first, catch, report
+  // once (non-blocking banner + console) and keep running.
+  const seenErrors = new Set<string>();
+  const frameError = (e: unknown) => {
+    const msg = String((e as Error)?.message ?? e);
+    if (seenErrors.has(msg)) return;
+    seenErrors.add(msg);
+    console.error(e);
+    const el = document.getElementById('warn');
+    if (el) {
+      el.textContent = `Something went wrong (${msg}). The game keeps running — details are in the browser console.`;
+      el.style.display = 'block';
+      setTimeout(() => (el.style.display = 'none'), 8000);
+    }
+    (window as any).__game = { ...(window as any).__game, frameErrors: [...seenErrors] };
+  };
   const loop = () => {
+    platform.requestFrame(loop);
+    try {
+      step();
+    } catch (e) {
+      platform.input.endFrame(); // don't replay the click that triggered it
+      frameError(e);
+    }
+  };
+  const step = () => {
     const now = platform.now();
     const dt = Math.min(0.1, now - last);
     last = now;
@@ -139,8 +164,7 @@ async function main() {
     game.frame(dt, s);
     platform.input.endFrame();
     frames++;
-    (window as any).__game = { ready: frames > 3, frames, error: null, game };
-    platform.requestFrame(loop);
+    (window as any).__game = { ready: frames > 3, frames, error: null, frameErrors: [...seenErrors], game };
   };
   platform.requestFrame(loop);
 }

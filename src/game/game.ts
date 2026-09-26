@@ -837,6 +837,8 @@ export class Game {
     const overUI = this.hud.layout(scale);
     this.handleInput(dt, overUI, scale);
     this.update(dt);
+    // drop dead / sold entities from the selection and control groups before anything draws
+    for (const id of this.selection) if (!this.world.get(id)) this.selection.delete(id);
     this.render(scale);
   }
 }

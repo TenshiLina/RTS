@@ -454,8 +454,11 @@ export class Hud {
     const g = this.g;
     const ui = g.ui;
     const [x, y, w, h] = this.L.selPanel!;
-    const sel = [...g.selection].map((id) => g.world.get(id)!).filter(Boolean);
+    // re-read the selection: the layout pass ran before this frame's sim ticks, and a selected
+    // unit may have died (or a structure been sold) in between
+    const sel = [...g.selection].map((id) => g.world.get(id)).filter((e): e is NonNullable<typeof e> => !!e);
     const first = sel[0];
+    if (!first) return;
     const t = g.world.type(first);
     ui.rect(x, y, w, h, 0x140c0a, 0.9);
     ui.outline(x, y, w, h, 1.5 * s, GOLD_DIM, 1);
