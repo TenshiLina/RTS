@@ -199,9 +199,9 @@ export function platform(mb: MeshBuilder, w: number, d: number, h: number, opts:
   const mat = opts.mat ?? PAL.stone;
   mb.with(null, () => {
     mb.box([w, h, d], [0, h / 2, 0], 0.06);
-    // 须弥座-style lip
-    mb.box([w + 0.16, 0.12, d + 0.16], [0, h - 0.06, 0], 0.03);
-    mb.box([w + 0.12, 0.1, d + 0.12], [0, 0.05, 0], 0.03);
+    // 须弥座-style coping, standing 2 cm proud of the terrace so the two tops never share a plane
+    mb.box([w + 0.16, 0.12, d + 0.16], [0, h - 0.04, 0], 0.03);
+    mb.box([w + 0.12, 0.13, d + 0.12], [0, 0.065, 0], 0.03);
     const sw = opts.stairW ?? Math.min(2.4, w * 0.35);
     const stairs = (sign: number) => {
       const n = Math.max(2, Math.round(h / 0.18));
@@ -255,7 +255,7 @@ export function bracketBand(mb: MeshBuilder, w: number, d: number, y: number, h 
       mb.with(T(x, y + h * 0.56, z, [0, rot, 0]), () => {
         mb.box([0.3, h * 0.2, 0.3], [0, 0, 0.1], 0.02);
         mb.box([0.5, h * 0.16, 0.24], [0, h * 0.18, 0.22], 0.02);
-        mb.box([0.24, h * 0.16, 0.5], [0, h * 0.18, 0.28], 0.02);
+        mb.box([0.24, h * 0.18, 0.5], [0, h * 0.2, 0.28], 0.02);
         mb.box([0.62, h * 0.14, 0.22], [0, h * 0.34, 0.38], 0.02);
       });
     };
@@ -278,7 +278,7 @@ export function latticePanel(mb: MeshBuilder, w: number, h: number, c: V3, opts:
   const cols = opts.cols ?? Math.max(2, Math.round(w / 0.28));
   const rows = opts.rows ?? Math.max(2, Math.round(h / 0.28));
   const frame = opts.frame ?? PAL.lattice;
-  mb.with(null, () => mb.box([w, h, 0.06], [c[0], c[1], c[2] - 0.02]), { mat: opts.paper ?? PAL.paperWindow });
+  mb.with(null, () => mb.box([w, h, 0.05], [c[0], c[1], c[2] - 0.015]), { mat: opts.paper ?? PAL.paperWindow });
   mb.with(null, () => {
     mb.box([w + 0.1, 0.1, 0.1], [c[0], c[1] + h / 2, c[2]]);
     mb.box([w + 0.1, 0.1, 0.1], [c[0], c[1] - h / 2, c[2]]);

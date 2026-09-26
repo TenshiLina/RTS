@@ -68,10 +68,11 @@ export function buildTerrainGpu(device: Device, t: TerrainData): TerrainGpu {
   const ib = device.createBuffer({ size: idx.byteLength, usage: 'index', data: idx, label: 'terrain-idx' });
 
   let water: TerrainGpu['water'] = null;
-  if (t.waterRect) {
-    const r = t.waterRect;
+  if (t.waterRects.length) {
     const y = t.waterLevel;
-    const verts = new Float32Array([r.x0, y, r.z0, r.x0, y, r.z1, r.x1, y, r.z1, r.x0, y, r.z0, r.x1, y, r.z1, r.x1, y, r.z0]);
+    const v: number[] = [];
+    for (const r of t.waterRects) v.push(r.x0, y, r.z0, r.x0, y, r.z1, r.x1, y, r.z1, r.x0, y, r.z0, r.x1, y, r.z1, r.x1, y, r.z0);
+    const verts = new Float32Array(v);
     const wvb = device.createBuffer({ size: verts.byteLength, usage: 'vertex', data: verts, label: 'water' });
     const hdata = new Uint16Array(n);
     for (let k = 0; k < n; k++) hdata[k] = toHalf(t.heights[k]);
@@ -81,7 +82,7 @@ export function buildTerrainGpu(device: Device, t: TerrainData): TerrainGpu {
     // half-texel offset so texel centres line up with height samples
     const ox = t.originX - step / 2, oz = t.originZ - step / 2;
     const uniforms = new Float32Array([ox, oz, 1 / (sizeX + step), 1 / (sizeZ + step), sh[0], sh[1], sh[2], 0, dp[0], dp[1], dp[2], 0.9]);
-    water = { vb: wvb, vertexCount: 6, heightTex, uniforms };
+    water = { vb: wvb, vertexCount: verts.length / 3, heightTex, uniforms };
   }
   return { vb, ib, indexCount: idx.length, indexFormat: big ? 'uint32' : 'uint16', water };
 }

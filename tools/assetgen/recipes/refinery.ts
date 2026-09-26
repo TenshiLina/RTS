@@ -28,7 +28,8 @@ export const refinery: Recipe = {
       mb.with(null, () => mb.box([hw - 0.25, hh, hd - 0.25], [0, 0.4 + hh / 2, 0]), { mat: PAL.plaster });
       mb.with(null, () => mb.box([hw - 0.15, 0.7, hd - 0.15], [0, 0.4 + 0.35, 0]), { mat: PAL.brick });
       // big front doors (open, glowing interior)
-      mb.with(null, () => mb.box([2.0, 2.2, 0.05], [0, 0.4 + 1.1, hd / 2 - 0.1]), { mat: { ...PAL.jade, name: 'interior_glow', emissive: 0.5, color: 0x6fd6a0 } });
+      // glowing interior, set just proud of the brick dado (their faces used to share a plane → flicker)
+      mb.with(null, () => mb.box([2.0, 2.2, 0.02], [0, 0.4 + 1.1, (hd - 0.15) / 2 + 0.02]), { mat: { ...PAL.jade, name: 'interior_glow', emissive: 0.45, color: 0x3f8f6c } });
       mb.with(null, () => {
         mb.box([0.12, 2.3, 0.14], [-1.06, 0.4 + 1.15, hd / 2 - 0.08]);
         mb.box([0.12, 2.3, 0.14], [1.06, 0.4 + 1.15, hd / 2 - 0.08]);

@@ -78,14 +78,34 @@ export function exportGLB(mb: MeshBuilder, opts: ExportOptions = {}): Uint8Array
   const skinned = !!skeleton && skeleton.length > 0;
   const hasSway = mb.tris.some((t) => t.sway.some((s) => s > 0));
 
+  // ---- double-sided materials: emit the reverse face so meshes can render with back-face culling
+  const srcTris = mb.tris;
+  const tris = [...srcTris];
+  const aoSrc = ao;
+  let aoAll = ao;
+  const dsMats = new Set(mb.materials.map((m, i) => (m.doubleSided ? i : -1)).filter((i) => i >= 0));
+  if (dsMats.size) {
+    const extra: number[] = [];
+    srcTris.forEach((t, ti) => {
+      if (!dsMats.has(t.mat)) return;
+      tris.push({ ...t, p: [t.p[0], t.p[2], t.p[1]], n: [t.n[0], t.n[2], t.n[1]].map((n) => [-n[0], -n[1], -n[2]]) as any, uv: [t.uv[0], t.uv[2], t.uv[1]], sway: [t.sway[0], t.sway[2], t.sway[1]] });
+      if (aoSrc) extra.push(aoSrc[ti * 3], aoSrc[ti * 3 + 2], aoSrc[ti * 3 + 1]);
+    });
+    if (aoSrc) {
+      aoAll = new Float32Array(aoSrc.length + extra.length);
+      aoAll.set(aoSrc);
+      aoAll.set(extra, aoSrc.length);
+    }
+  }
+
   // ---- deduplicate vertices
   const vmap = new Map<string, number>();
   const P: number[] = [], N: number[] = [], UV: number[] = [], C: number[] = [], J: number[] = [], S: number[] = [];
   const perMat: number[][] = mb.materials.map(() => []);
-  mb.tris.forEach((t, ti) => {
+  tris.forEach((t, ti) => {
     for (let k = 0; k < 3; k++) {
       const p = t.p[k], n = t.n[k], uv = t.uv[k];
-      const a = ao ? ao[ti * 3 + k] : 1;
+      const a = aoAll ? aoAll[ti * 3 + k] : 1;
       const key = [p[0].toFixed(4), p[1].toFixed(4), p[2].toFixed(4), n[0].toFixed(3), n[1].toFixed(3), n[2].toFixed(3), uv[0].toFixed(3), uv[1].toFixed(3), t.mat, t.joint, t.sway[k].toFixed(2), a.toFixed(2), t.tint.join(',')].join('|');
       let idx = vmap.get(key);
       if (idx === undefined) {

@@ -19,21 +19,22 @@ export const barracks: Recipe = {
     const S = 8.6; // compound size
     const wallH = 1.9, wallT = 0.5;
     // packed-earth yard
-    mb.with(null, () => mb.box([S, 0.1, S], [0, 0.05, 0], 0.03), { mat: PAL.rammedEarth });
+    mb.with(null, () => mb.box([S - 0.04, 0.1, S - 0.04], [0, 0.05, 0], 0.03), { mat: PAL.rammedEarth });
     // perimeter walls (gap at front for the gate)
     const gateW = 2.6;
     mb.with(null, () => {
       mb.box([S, wallH, wallT], [0, wallH / 2, -S / 2 + wallT / 2], 0.04);
-      mb.box([wallT, wallH, S], [-S / 2 + wallT / 2, wallH / 2, 0], 0.04);
-      mb.box([wallT, wallH, S], [S / 2 - wallT / 2, wallH / 2, 0], 0.04);
+      // side walls fit between the front and back runs so no faces share a plane at the corners
+      mb.box([wallT, wallH, S - 2 * wallT], [-S / 2 + wallT / 2, wallH / 2, 0], 0.04);
+      mb.box([wallT, wallH, S - 2 * wallT], [S / 2 - wallT / 2, wallH / 2, 0], 0.04);
       const seg = (S - gateW) / 2;
       mb.box([seg, wallH, wallT], [-S / 2 + seg / 2, wallH / 2, S / 2 - wallT / 2], 0.04);
       mb.box([seg, wallH, wallT], [S / 2 - seg / 2, wallH / 2, S / 2 - wallT / 2], 0.04);
     }, { mat: PAL.plaster });
     mb.with(null, () => {
       mb.box([S + 0.04, 0.45, wallT + 0.04], [0, 0.22, -S / 2 + wallT / 2]);
-      mb.box([wallT + 0.04, 0.45, S + 0.04], [-S / 2 + wallT / 2, 0.22, 0]);
-      mb.box([wallT + 0.04, 0.45, S + 0.04], [S / 2 - wallT / 2, 0.22, 0]);
+      mb.box([wallT + 0.04, 0.45, S - 2 * wallT - 0.04], [-S / 2 + wallT / 2, 0.22, 0]);
+      mb.box([wallT + 0.04, 0.45, S - 2 * wallT - 0.04], [S / 2 - wallT / 2, 0.22, 0]);
       const seg = (S - gateW) / 2;
       mb.box([seg + 0.04, 0.45, wallT + 0.04], [-S / 2 + seg / 2, 0.22, S / 2 - wallT / 2]);
       mb.box([seg + 0.04, 0.45, wallT + 0.04], [S / 2 - seg / 2, 0.22, S / 2 - wallT / 2]);

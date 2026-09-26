@@ -216,7 +216,7 @@ export class Renderer {
       ],
     };
     this.pipes = {
-      mesh: d.createPipeline(base({ label: 'mesh', shader: meshShader, vertexBuffers: [MESH_VERTEX_LAYOUT, INSTANCE_LAYOUT], bindGroups: [FRAME_GROUP, MESH_GROUP], cullMode: 'none' })),
+      mesh: d.createPipeline(base({ label: 'mesh', shader: meshShader, vertexBuffers: [MESH_VERTEX_LAYOUT, INSTANCE_LAYOUT], bindGroups: [FRAME_GROUP, MESH_GROUP], cullMode: 'back' })),
       meshShadow: d.createPipeline({
         label: 'mesh-shadow',
         shader: { label: 'mesh-shadow', vertex: SHADERS.meshVert, fragment: SHADERS.depthFrag, defines: { SHADOW_PASS: 1 } },

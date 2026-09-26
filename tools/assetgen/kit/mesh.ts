@@ -448,8 +448,9 @@ export class MeshBuilder {
       return [u * w, y, 0];
     };
     const sway = (_u: number, v: number) => v * v;
-    this.with(T(0, 0, thickness / 2), () => this.surface(f, nu, nv, { uvFn: (u, v) => [u * w, v * h], sway, smooth: false, flip: true }));
-    this.with(T(0, 0, -thickness / 2), () => this.surface(f, nu, nv, { uvFn: (u, v) => [u * w, v * h], sway, smooth: false }));
+    void thickness;
+    // single sheet — cloth materials are double-sided, the exporter emits the back face
+    this.surface(f, nu, nv, { uvFn: (u, v) => [u * w, v * h], sway, smooth: false, flip: true });
   }
 
   /** Merge another builder's triangles (already in its model space) under the current transform. */

@@ -36,7 +36,7 @@ export const commandHall: Recipe = {
         if (i >= 1 && i <= 3) {
           latticePanel(mb, bay - 0.4, colH - 0.5, [x, ph + (colH - 0.5) / 2 + 0.1, D / 2 - 0.25], { cols: 4, rows: 7 });
         } else {
-          mb.with(null, () => mb.box([bay - 0.35, 1.0, 0.3], [x, ph + 0.5, D / 2 - 0.25]), { mat: PAL.brick });
+          mb.with(null, () => mb.box([bay - 0.45, 1.0, 0.3], [x, ph + 0.5, D / 2 - 0.25]), { mat: PAL.brick });
           latticePanel(mb, bay - 0.4, colH - 1.5, [x, ph + 1.0 + (colH - 1.5) / 2 + 0.05, D / 2 - 0.25], { cols: 4, rows: 4 });
         }
       }

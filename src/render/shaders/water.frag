@@ -22,7 +22,8 @@ void main() {
   vec2 xz = vWorldPos.xz;
   vec2 huv = (xz - water.heightmapRect.xy) * water.heightmapRect.zw;
   float ground = texture(uHeight, huv).r;
-  float depth = max(vWorldPos.y - ground, 0.0);
+  float depth = vWorldPos.y - ground;
+  if (depth <= 0.0) discard;
 
   float e = 0.1;
   float h0 = waves(xz, t), hx = waves(xz + vec2(e, 0.0), t), hz = waves(xz + vec2(0.0, e), t);
