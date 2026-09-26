@@ -1,11 +1,13 @@
-"""Package the built viewer (dist/) for hosts that only serve text/web types (e.g. claude.ai
+"""Package a built page (dist/) for hosts that only serve text/web types (e.g. claude.ai
 artifacts): .glb → base64 .b64.txt, manifest rewritten, page reduced to its body content.
 
-    npm run build && python3 tools/pack-hosted.py <outDir>
+    npm run build && python3 tools/pack-hosted.py <outDir> [game|viewer]
 """
 import base64, json, os, re, shutil, sys
 
 out = sys.argv[1]
+page = sys.argv[2] if len(sys.argv) > 2 else 'game'
+src_html, title = {'game': ('dist/index.html', 'Mandate of Heaven'), 'viewer': ('dist/viewer.html', 'Mandate of Heaven Viewer')}[page]
 shutil.rmtree(out, ignore_errors=True)
 os.makedirs(os.path.join(out, 'assets', 'models'))
 for f in os.listdir('dist/assets'):
@@ -17,10 +19,10 @@ for a in man['assets']:
     a['file'] = a['file'] + '.b64.txt'
     open(os.path.join(out, 'assets', 'models', a['file']), 'w').write(base64.b64encode(data).decode())
 json.dump(man, open(os.path.join(out, 'assets', 'models', 'manifest.json'), 'w'))
-s = open('dist/index.html').read()
+s = open(src_html).read()
 style = re.search(r'<style>.*?</style>', s, re.S).group(0)
 fonts = re.findall(r'<link[^>]*(?:googleapis|gstatic)[^>]*>', s)
 script = re.search(r'<script type="module"[^>]*></script>', s).group(0)
 body = re.sub(r'<script type="module"[^>]*></script>', '', re.search(r'<body>(.*?)</body>', s, re.S).group(1))
-open(os.path.join(out, 'index.html'), 'w').write('<title>Mandate of Heaven Viewer</title>\n' + '\n'.join(fonts) + '\n' + style + '\n' + body.strip() + '\n' + script + '\n')
+open(os.path.join(out, 'index.html'), 'w').write(f'<title>{title}</title>\n' + '\n'.join(fonts) + '\n' + style + '\n' + body.strip() + '\n' + script + '\n')
 print(json.dumps({'files': sorted(os.listdir(os.path.join(out, 'assets'))) + sorted(os.listdir(os.path.join(out, 'assets', 'models')))}))
