@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Mandate of Heaven — Asset Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Noto+Serif+SC:wght@600;700&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --lacquer: #1c1210;
+        --lacquer-2: #2a1a15;
+        --vermilion: #b0301f;
+        --gold: #d9ad52;
+        --gold-dim: #8d6b2f;
+        --paper: #efe4c9;
+        --ink: #e9dfc7;
+        --muted: #b3a585;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #0d0a09; color: var(--ink); font-family: "Alegreya Sans", "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+      #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+      .panel {
+        position: fixed; background: linear-gradient(180deg, rgba(42, 26, 21, 0.92), rgba(24, 15, 12, 0.92));
+        border: 1px solid var(--gold-dim); box-shadow: 0 0 0 1px #000, inset 0 0 0 1px rgba(217, 173, 82, 0.15), 0 8px 30px rgba(0, 0, 0, 0.5);
+        border-radius: 3px; backdrop-filter: blur(4px);
+      }
+      .title { font-family: Cinzel, serif; letter-spacing: 0.08em; color: var(--gold); }
+      #topbar { top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 8px 14px; }
+      #topbar .title { font-size: 15px; white-space: nowrap; }
+      #topbar .title small { font-family: 'Noto Serif SC', serif; color: var(--muted); margin-left: 6px; font-size: 13px; }
+      .seg { display: flex; gap: 2px; }
+      button {
+        font: 500 13px "Alegreya Sans", "Segoe UI", sans-serif; color: var(--ink); background: #3a241c; border: 1px solid #6b4a2a; padding: 6px 10px; cursor: pointer; border-radius: 2px;
+      }
+      button:hover { border-color: var(--gold); }
+      button.on { background: linear-gradient(180deg, #b0301f, #7d1f14); border-color: var(--gold); color: #fff5dc; }
+      .swatches { display: flex; gap: 4px; }
+      .sw { width: 18px; height: 18px; border-radius: 2px; border: 1px solid #000; outline: 1px solid var(--gold-dim); cursor: pointer; }
+      .sw.on { outline: 2px solid var(--gold); }
+      #list { top: 70px; left: 12px; width: 230px; max-height: calc(100% - 90px); overflow: auto; padding: 10px 0; }
+      #list h3 { margin: 10px 14px 6px; font: 700 11px Cinzel, serif; letter-spacing: 0.14em; color: var(--gold); text-transform: uppercase; }
+      #list .item { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 14px; cursor: pointer; font-size: 13px; border-left: 3px solid transparent; }
+      #list .item:hover { background: rgba(217, 173, 82, 0.08); }
+      #list .item.on { border-left-color: var(--vermilion); background: rgba(176, 48, 31, 0.18); }
+      #list .item .hz { font-family: 'Noto Serif SC', serif; color: var(--muted); font-size: 12px; }
+      #info { left: 12px; bottom: 12px; width: 300px; padding: 12px 14px; display: none; }
+      #info .name { font: 700 18px Cinzel, serif; color: var(--gold); }
+      #info .hz { font: 600 16px 'Noto Serif SC', serif; color: var(--paper); margin-left: 8px; }
+      #info .meta { margin-top: 6px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+      #info .anims { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+      #help { right: 12px; bottom: 12px; padding: 8px 12px; font-size: 11px; color: var(--muted); line-height: 1.6; }
+      #stats { right: 12px; top: 12px; padding: 6px 10px; font: 11px ui-monospace, monospace; color: var(--muted); }
+      body.noui .panel { display: none !important; }
+      #loading { position: fixed; inset: 0; display: grid; place-items: center; font: 600 16px Cinzel, serif; color: var(--gold); letter-spacing: 0.1em; background: #0d0a09; }
+      #error { position: fixed; inset: 20px; white-space: pre-wrap; font: 12px ui-monospace, monospace; color: #ff9c8a; overflow: auto; display: none; background: rgba(0,0,0,0.85); padding: 20px; }
+      @media (max-width: 720px) {
+        #list { display: none; }
+        #help { display: none; }
+        #topbar { flex-wrap: wrap; justify-content: center; width: calc(100% - 24px); }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="loading">Summoning the Mandate…</div>
+    <div id="topbar" class="panel">
+      <div class="title">Mandate of Heaven <small>天命</small></div>
+      <div class="seg" id="modes"></div>
+      <div class="swatches" id="teams"></div>
+      <button id="rotate">Turntable</button>
+      <button id="grid">Grid</button>
+    </div>
+    <div id="list" class="panel"></div>
+    <div id="info" class="panel"></div>
+    <div id="stats" class="panel"></div>
+    <div id="help" class="panel">Drag: orbit · Right/Middle-drag: pan · Wheel: zoom · WASD: move · Q/E: rotate</div>
+    <pre id="error"></pre>
+    <script type="module" src="/src/apps/viewer/main.ts"></script>
+  </body>
+</html>

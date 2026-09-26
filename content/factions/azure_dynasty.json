@@ -1,0 +1,124 @@
+{
+  "id": "azure_dynasty",
+  "name": "The Azure Dynasty",
+  "hanzi": "苍朝",
+  "summary": "Human empire of artificers and geomancers. Mohist siege engineering, Zhuge Liang's clockwork, gunpowder alchemy and the Academies of the Five Elements. Strongest when entrenched.",
+  "notes": "Tier 1 is the playable prototype scope. Numbers are first-pass and live here (not in code) so designers can tune without rebuilding.",
+  "tiers": [
+    { "tier": 1, "name": "Garrison", "hanzi": "营", "requires": { "structures": ["azure_command_hall"], "mandate": 0 } },
+    { "tier": 2, "name": "Prefecture", "hanzi": "郡", "requires": { "structures": ["azure_observatory"], "mandate": 150 } },
+    { "tier": 3, "name": "Province", "hanzi": "州", "requires": { "structures": ["azure_five_elements_academy"], "mandate": 500 } },
+    { "tier": 4, "name": "Mandate", "hanzi": "天命", "requires": { "structures": ["azure_hall_of_heaven"], "mandate": 1200 } }
+  ],
+  "structures": [
+    {
+      "id": "azure_command_hall", "name": "Governor's Yamen", "hanzi": "衙门", "tier": 1, "role": "construction_yard",
+      "model": "azure_command_hall", "footprint": [4, 4], "cost": 3000, "buildTime": 0, "qi": 20, "hp": 2400, "armor": "fortified",
+      "prereqs": [], "sidebarTab": "structures",
+      "buildRadius": 6, "mandatePerMin": 6,
+      "abilities": ["deploy_from_caravan", "undeploy_to_caravan", "garrison_archers_4"],
+      "description": "Seat of imperial authority. Constructs all structures. Its terrace archers repel early raids."
+    },
+    {
+      "id": "azure_qi_shrine", "name": "Qi Shrine", "hanzi": "风水坛", "tier": 1, "role": "power",
+      "model": "azure_qi_shrine", "footprint": [2, 2], "cost": 600, "buildTime": 10, "qi": 100, "hp": 700, "armor": "structure",
+      "prereqs": ["azure_command_hall"], "sidebarTab": "structures", "mandatePerMin": 2,
+      "harmony": { "adjacentTo": ["water", "azure_qi_shrine"], "bonus": { "qi": 0.1 } },
+      "description": "Geomancers draw ley-line Qi into a floating orb. Powers the base; +10% Qi beside water or another shrine."
+    },
+    {
+      "id": "azure_barracks", "name": "Garrison Camp", "hanzi": "兵营", "tier": 1, "role": "infantry_factory",
+      "model": "azure_barracks", "footprint": [3, 3], "cost": 500, "buildTime": 12, "qi": -20, "hp": 1000, "armor": "fortified",
+      "prereqs": ["azure_qi_shrine"], "sidebarTab": "structures", "mandatePerMin": 2,
+      "harmony": { "adjacentTo": ["azure_command_hall"], "bonus": { "trainSpeed": 0.1 } },
+      "description": "Walled drill yard. Trains infantry."
+    },
+    {
+      "id": "azure_jade_refinery", "name": "Jade Refinery", "hanzi": "玉坊", "tier": 1, "role": "refinery",
+      "model": "azure_jade_refinery", "footprint": [4, 3], "cost": 2000, "buildTime": 20, "qi": -30, "hp": 1200, "armor": "structure",
+      "prereqs": ["azure_qi_shrine"], "sidebarTab": "structures", "mandatePerMin": 3, "freeUnit": "azure_wooden_ox",
+      "maturity": { "afterSeconds": 300, "bonus": { "refineRate": 0.2 } },
+      "description": "Grinds raw spirit-jade into currency. Comes with a Wooden Ox. Matures after 5 minutes: +20% refine rate."
+    },
+    {
+      "id": "azure_workshop", "name": "Artificer Workshop", "hanzi": "工坊", "tier": 1, "role": "vehicle_factory",
+      "model": "azure_workshop", "footprint": [4, 4], "cost": 2000, "buildTime": 20, "qi": -40, "hp": 1400, "armor": "fortified",
+      "prereqs": ["azure_jade_refinery"], "sidebarTab": "structures", "mandatePerMin": 3,
+      "description": "Mohist artificers assemble clockwork machines. (Model: next asset batch.)"
+    },
+    {
+      "id": "azure_granary", "name": "Jade Vault", "hanzi": "玉库", "tier": 1, "role": "silo",
+      "model": "azure_granary", "footprint": [1, 1], "cost": 150, "buildTime": 5, "qi": -5, "hp": 400, "armor": "structure",
+      "prereqs": ["azure_jade_refinery"], "sidebarTab": "structures", "storage": 1500, "mandatePerMin": 1,
+      "description": "Stores refined jade. (Model: next asset batch.)"
+    },
+    {
+      "id": "azure_arrow_tower", "name": "Arrow Tower", "hanzi": "箭楼", "tier": 1, "role": "defense",
+      "model": "azure_arrow_tower", "footprint": [1, 1], "cost": 500, "buildTime": 10, "qi": -10, "hp": 800, "armor": "fortified",
+      "prereqs": ["azure_barracks"], "sidebarTab": "defense",
+      "weapon": { "damage": 22, "rof": 1.1, "range": 7.5, "vs": { "light": 1.0, "medium": 0.6, "heavy": 0.3, "fortified": 0.25 } },
+      "garrison": 2,
+      "description": "Brick keep with a fighting gallery. Two garrisoned infantry add their fire."
+    },
+    {
+      "id": "azure_wall", "name": "Rammed-Earth Wall", "hanzi": "城墙", "tier": 1, "role": "wall",
+      "model": "azure_wall", "footprint": [1, 1], "cost": 40, "buildTime": 1.5, "qi": 0, "hp": 600, "armor": "fortified",
+      "prereqs": ["azure_command_hall"], "sidebarTab": "defense", "dragPlace": true, "autoConnect": true,
+      "description": "Cheap, tough and quick to raise. Drag to place a line."
+    }
+  ],
+  "units": [
+    {
+      "id": "azure_halberdier", "name": "Halberdier", "hanzi": "戟兵", "tier": 1, "category": "infantry",
+      "model": "azure_halberdier", "cost": 100, "buildTime": 5, "hp": 125, "armor": "light", "speed": 1.35, "sight": 6,
+      "producedAt": ["azure_barracks"], "prereqs": ["azure_barracks"], "sidebarTab": "infantry",
+      "weapon": { "damage": 16, "rof": 1.1, "range": 1.2, "vs": { "light": 1.0, "medium": 0.7, "heavy": 0.35, "fortified": 0.15, "cavalry": 2.0 } },
+      "abilities": ["garrison", "brace_vs_cavalry"],
+      "description": "Line infantry with ji halberd and rattan shield. Holds ground; bonus vs cavalry."
+    },
+    {
+      "id": "azure_archer", "name": "Archer", "hanzi": "弓手", "tier": 1, "category": "infantry",
+      "model": "azure_archer", "cost": 150, "buildTime": 6, "hp": 80, "armor": "light", "speed": 1.4, "sight": 7,
+      "producedAt": ["azure_barracks"], "prereqs": ["azure_barracks"], "sidebarTab": "infantry",
+      "weapon": { "damage": 14, "rof": 1.3, "range": 5.5, "projectile": "arrow", "vs": { "light": 1.0, "medium": 0.6, "heavy": 0.3, "fortified": 0.15, "air": 0.8 } },
+      "abilities": ["garrison", "fire_arrows_upgrade"],
+      "description": "Recurve archer. Can hit air. +50% range when garrisoned in towers."
+    },
+    {
+      "id": "azure_daoist", "name": "Daoist Initiate", "hanzi": "道士", "tier": 1, "category": "infantry",
+      "model": "azure_daoist", "cost": 300, "buildTime": 9, "hp": 90, "armor": "light", "speed": 1.25, "sight": 7,
+      "producedAt": ["azure_barracks"], "prereqs": ["azure_barracks", "azure_qi_shrine"], "sidebarTab": "infantry",
+      "weapon": { "damage": 28, "rof": 1.8, "range": 5, "projectile": "talisman", "splash": 0.8, "vs": { "light": 1.2, "medium": 0.6, "heavy": 0.4, "fortified": 0.2, "spirit": 2.0 } },
+      "abilities": ["ward_allies"],
+      "description": "Hurls exploding paper talismans. 'Ward' shields nearby infantry. The first step toward the elemental academies."
+    },
+    {
+      "id": "azure_artificer", "name": "Artificer", "hanzi": "工匠", "tier": 1, "category": "infantry",
+      "model": "azure_artificer", "cost": 500, "buildTime": 10, "hp": 75, "armor": "light", "speed": 1.3, "sight": 5,
+      "producedAt": ["azure_barracks"], "prereqs": ["azure_barracks"], "sidebarTab": "infantry",
+      "abilities": ["capture_structure", "repair_structure", "repair_bridge"],
+      "description": "Mohist engineer. Captures enemy structures and repairs friendly ones. (Model: next asset batch.)"
+    },
+    {
+      "id": "azure_wooden_ox", "name": "Wooden Ox", "hanzi": "木牛", "tier": 1, "category": "vehicle",
+      "model": "azure_wooden_ox", "cost": 1400, "buildTime": 14, "hp": 1000, "armor": "heavy", "speed": 1.0, "sight": 4,
+      "producedAt": ["azure_workshop"], "prereqs": ["azure_jade_refinery", "azure_workshop"], "sidebarTab": "machines",
+      "harvester": { "capacity": 700, "harvestRate": 35, "unloadRate": 140 },
+      "description": "Clockwork harvester after Zhuge Liang's design. Tough, slow, unarmed."
+    },
+    {
+      "id": "azure_gliding_horse", "name": "Gliding Horse", "hanzi": "流马", "tier": 1, "category": "vehicle",
+      "model": "azure_gliding_horse", "cost": 500, "buildTime": 7, "hp": 220, "armor": "medium", "speed": 2.6, "sight": 9,
+      "producedAt": ["azure_workshop"], "prereqs": ["azure_workshop"], "sidebarTab": "machines",
+      "weapon": { "damage": 9, "rof": 0.5, "range": 4, "vs": { "light": 1.0, "medium": 0.5, "heavy": 0.25, "fortified": 0.1 } },
+      "description": "Fast clockwork scout with a repeating crossbow. (Model: next asset batch.)"
+    },
+    {
+      "id": "azure_caravan", "name": "Imperial Caravan", "hanzi": "御辇", "tier": 1, "category": "vehicle",
+      "model": "azure_caravan", "cost": 3000, "buildTime": 30, "hp": 1800, "armor": "heavy", "speed": 0.8, "sight": 5,
+      "producedAt": ["azure_workshop"], "prereqs": ["azure_workshop"], "sidebarTab": "machines",
+      "abilities": ["deploy_to_command_hall"],
+      "description": "Mobile court. Deploys into a Governor's Yamen. (Model: next asset batch.)"
+    }
+  ]
+}

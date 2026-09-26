@@ -1,0 +1,31 @@
+{
+  "cellSize": 3,
+  "simTickHz": 15,
+  "resources": {
+    "jade": { "name": "Spirit Jade", "hanzi": "灵玉", "kind": "currency", "veinRegrowPerMin": 0.08 },
+    "qi": { "name": "Qi", "hanzi": "气", "kind": "power", "lowPower": { "productionSpeed": 0.5, "defensesOffline": true, "radarOffline": true } },
+    "mandate": {
+      "name": "Mandate of Heaven", "hanzi": "天命", "kind": "meta",
+      "description": "Accrues only from standing structures (each lists mandatePerMin) scaled by base Harmony. Gates tier advancement and charges super-weapons. Lost when structures fall — rushing an unbuilt base yields nothing.",
+      "harmonyMultiplier": { "min": 0.75, "max": 1.35 }
+    }
+  },
+  "armorClasses": ["light", "medium", "heavy", "fortified", "structure", "air", "spirit", "cavalry"],
+  "harmony": {
+    "description": "Feng-shui adjacency: structures touching their listed neighbours (or terrain like water) grant bonuses; cramped or isolated layouts fall below 1.0.",
+    "maxProductionBonus": 0.25
+  },
+  "structureDefaults": {
+    "selfRepairPerSec": 2,
+    "selfRepairDelay": 12,
+    "sellRefund": 0.5,
+    "foundationArmorSeconds": 0
+  },
+  "buildQueue": {
+    "style": "cnc_sidebar",
+    "tabs": ["structures", "defense", "infantry", "machines"],
+    "parallelQueues": "one_per_tab",
+    "placement": "ready_then_place",
+    "maxQueuedPerItem": 5
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "mandate-of-heaven-rts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "East Asian fantasy RTS — WebGL2 prototype with a portable engine core",
+  "scripts": {
+    "assets": "tsx tools/assetgen/build.ts",
+    "dev": "npm run assets && vite",
+    "build": "npm run assets && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "shaders:validate": "tsx tools/validate-shaders.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@webgpu/glslang": "^0.0.15",
+    "playwright-core": "^1.63.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  }
+}
