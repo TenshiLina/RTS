@@ -83,3 +83,19 @@ funnels), particles clip hard against terrain, foliage ignores local wind, and n
   trails.
 * Procedural 3D effect meshes: ice shards, spikes and blocks, the wave, the funnel, flame columns.
 * Procedural audio synthesised at startup (no sample files) behind `Platform.audio`.
+
+## 7. Iteration log (gameplay captures at the default camera)
+
+Captured with `tools/capture.ts` (frame-stepped, 15 fps) from staged scenarios in
+`tools/scenarios/`, reviewed as contact sheets and WebM clips at the default zoom.
+
+| Round | Finding | Change |
+|---|---|---|
+| Fire 1 | Wildfire read as a white-hot disc; flames merged into glow; no dark counterweight | Darker flame ramp (white only in young, dense bases); a third as many flames, taller and thinner with gaps; lights ÷3; ember cracks only in the cracks |
+| Fire 2 | Burning ground now reads (charred ground, tongues); eruption still a white ring; smoke invisible under additive flames | Rim tongues dimmer; shock ring deep orange; smoke leans downwind and rises above the flames |
+| Fire 3 | White oval at the eruption came from the additive flame-column mesh seen from above | Column removed — the rim tongues carry the eruption |
+| Ice 1 | Glacier line read as a white cotton band; ice sun-lit to white; big white blooms from lights and mist | Ice body stays saturated blue under sun, brightness only in rims/fractures/glints; one tall spike + two small per step; narrower, bluer frost; steam and lights cut |
+| Water 1 | Wave read as a pale glass panel; wet ground nearly black; ripples looked like selection rings | Deep-teal wave with a thick foam crest and foam streaks, larger crest spray, a foam wash left behind; wet ground darker but glossy; ripples soft and bluish |
+| Air 1 | Whirlwind read as a white feathery fountain | Narrower, taller funnel (it flared into a plume from the RTS camera); earthy dust with spiral bands; wind streaks at half opacity; more carried debris |
+| Wrath 1 | Crater and lava cracks read well; clouds drifted off-target in perspective; strike flash washed the screen | Storm lowered to 9–12 m so it sits over the target; flash and strike light halved; bluish shock ring; bigger arcs over wet ground |
+| Fire whirl 1 | Read as a glowing blob | Dust funnel chars to dark smoke, the wind shell catches fire, fewer and dimmer spiralling tongues |

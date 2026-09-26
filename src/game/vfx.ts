@@ -254,15 +254,16 @@ export class VFX {
     const anchor = { pos: [p[0], p[1], p[2]] as V3 };
     for (let i = 0; i < 34; i++) {
       this.ps.spawn({
-        pos: p, orbit: { anchor, r: rr(radius * 2.2, radius * 3.6), a: R() * 6.28, w: rr(0.9, 1.4), dr: -rr(1.5, 3), h: rr(15, 19), lift: rr(-0.3, 0.3) },
-        life: duration + rr(1, 1.6), size: [rr(3.5, 5), rr(5, 7.5)], color: [0.16, 0.17, 0.23, 0.82], color1: [0.16, 0.17, 0.23, 0], cell: FX.cloud, rot: R() * 6, vrot: rr(-0.4, 0.4), delay: rr(0, duration * 0.35), fadeIn: 0.25,
+        // low enough (9-12 m) that, from the RTS camera, the storm sits over its target
+        pos: p, orbit: { anchor, r: rr(radius * 1.6, radius * 3), a: R() * 6.28, w: rr(0.9, 1.4), dr: -rr(1.2, 2.4), h: rr(9, 12), lift: rr(-0.2, 0.2) },
+        life: duration + rr(1, 1.6), size: [rr(3, 4.5), rr(4.5, 6.5)], color: [0.13, 0.14, 0.2, 0.85], color1: [0.13, 0.14, 0.2, 0], cell: FX.cloud, rot: R() * 6, vrot: rr(-0.4, 0.4), delay: rr(0, duration * 0.35), fadeIn: 0.25,
       });
     }
     // lightning flickering inside the clouds
     for (let i = 0; i < 9; i++) {
       this.later(rr(0.15, duration), () => {
         const a = R() * 6.28, r = rr(0, radius * 1.8);
-        const q: V3 = [p[0] + Math.cos(a) * r, p[1] + rr(15, 18), p[2] + Math.sin(a) * r];
+        const q: V3 = [p[0] + Math.cos(a) * r, p[1] + rr(9, 12), p[2] + Math.sin(a) * r];
         this.light(q, [0.6, 0.72, 1], 24, 24, 0.09, { attack: 0.005 });
         this.ps.spawn({ pos: q, life: 0.12, size: [rr(2, 3.5), 3], color: [0.75, 0.85, 1, 1], cell: FX.arc, additive: true, mode: 4, rot: R() * 6, intensity: [5, 3] });
         this.ps.spawn({ pos: q, life: 0.1, size: [4, 5], color: [0.55, 0.65, 1, 0.6], cell: FX.glow, additive: true, intensity: [1.5, 0] });
@@ -286,7 +287,7 @@ export class VFX {
     this.light([p[0], p[1] + 1, p[2]], [0.55, 0.7, 1], 8, radius * 2.5, duration + 0.1, { attack: duration });
   }
   wrathStrike(p: V3, radius: number) {
-    this.flash = Math.max(this.flash, 0.75);
+    this.flash = Math.max(this.flash, 0.45);
     const bolt = (tx: number, tz: number, core: number, glow: number, top: number) => {
       const pts: V3[] = [];
       let x = tx + rr(-2.5, 2.5), z = tz + rr(-2.5, 2.5);
@@ -316,13 +317,13 @@ export class VFX {
       this.later(0.07, draw);
       this.later(0.16, draw);
     };
-    bolt(p[0], p[2], 0.7, 2.6, p[1] + 30);
-    for (let b = 0; b < 3; b++) this.later(rr(0.03, 0.2), () => bolt(p[0] + rr(-radius, radius) * 0.7, p[2] + rr(-radius, radius) * 0.7, 0.4, 1.4, p[1] + 26));
-    this.light([p[0], p[1] + 3, p[2]], [0.75, 0.85, 1], 70, 28, 0.32, { attack: 0.005 });
-    this.later(0.07, () => this.light([p[0], p[1] + 3, p[2]], [0.75, 0.85, 1], 45, 22, 0.12, { attack: 0.005 }));
+    bolt(p[0], p[2], 0.7, 2.6, p[1] + 14);
+    for (let b = 0; b < 3; b++) this.later(rr(0.03, 0.2), () => bolt(p[0] + rr(-radius, radius) * 0.7, p[2] + rr(-radius, radius) * 0.7, 0.4, 1.4, p[1] + 12));
+    this.light([p[0], p[1] + 3, p[2]], [0.7, 0.8, 1], 30, 24, 0.3, { attack: 0.005 });
+    this.later(0.07, () => this.light([p[0], p[1] + 3, p[2]], [0.7, 0.8, 1], 20, 20, 0.12, { attack: 0.005 }));
     const g: V3 = [p[0], p[1] + 0.5, p[2]];
-    this.ps.spawn({ pos: g, life: 0.35, size: [radius * 1.2, radius * 2.4], color: [0.8, 0.88, 1, 1], cell: FX.glow, additive: true, intensity: [2.2, 0] });
-    this.ps.spawn({ pos: [p[0], p[1] + 0.2, p[2]], life: 0.8, size: [0.5, radius * 3.4], color: [0.7, 0.85, 1, 1], cell: FX.shock, additive: true, flat: true, intensity: [3, 0.2] });
+    this.ps.spawn({ pos: g, life: 0.3, size: [radius, radius * 2], color: [0.65, 0.78, 1, 1], cell: FX.glow, additive: true, intensity: [1.4, 0] });
+    this.ps.spawn({ pos: [p[0], p[1] + 0.2, p[2]], life: 0.8, size: [0.5, radius * 3.4], color: [0.5, 0.68, 1, 1], cell: FX.shock, additive: true, flat: true, intensity: [2, 0.1] });
     this.ps.spawn({ pos: [p[0], p[1] + 1.5, p[2]], life: 0.6, size: [radius, radius * 4], color: [1, 1, 1, 1], cell: FX.shock, distort: true, intensity: [3, 0] });
     for (let i = 0; i < 40; i++) {
       const d = rdir();
@@ -351,9 +352,9 @@ export class VFX {
     }
     if (wetSpots.length) {
       this.run(1.4, (k) => {
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 5; i++) {
           const q = wetSpots[(R() * wetSpots.length) | 0];
-          this.ps.spawn({ pos: [q[0] + rr(-0.5, 0.5), q[1] + rr(0, 0.6), q[2] + rr(-0.5, 0.5)], life: rr(0.06, 0.16), size: [rr(0.6, 1.2), 0.4], color: [0.7, 0.9, 1, 1], cell: FX.arc, additive: true, flat: R() < 0.6, mode: 4, rot: R() * 6, intensity: [6, 3] });
+          this.ps.spawn({ pos: [q[0] + rr(-0.5, 0.5), q[1] + rr(0, 0.6), q[2] + rr(-0.5, 0.5)], life: rr(0.08, 0.2), size: [rr(1, 1.9), 0.6], color: [0.5, 0.72, 1, 1], cell: FX.arc, additive: true, flat: R() < 0.6, mode: 4, rot: R() * 6, intensity: [6, 3] });
         }
         if (R() < 0.3 * (1 - k)) {
           const q = wetSpots[(R() * wetSpots.length) | 0];

@@ -100,8 +100,9 @@ void main() {
   // wet: darker and glossy; puddles in the wettest spots mirror the sky
   float wet = gfx.b;
   float puddle = smoothstep(0.5, 0.72, wet + (fbm(xz * 0.55 + 9.0) - 0.5) * 0.55);
-  albedo *= mix(1.0, 0.52, smoothstep(0.0, 0.5, wet));
-  albedo = mix(albedo, albedo * 0.6, puddle);
+  // (darker and glossier, not black: the sheen sells "wet", not the darkness)
+  albedo *= mix(1.0, 0.7, smoothstep(0.0, 0.5, wet));
+  albedo = mix(albedo, albedo * 0.8 + srgb(vec3(0.04, 0.08, 0.1)), puddle);
   rough = mix(rough, 0.16, smoothstep(0.0, 0.6, wet));
   rough = mix(rough, 0.03, puddle);
   N = normalize(mix(N, vec3(0.0, 1.0, 0.0), puddle));
@@ -110,7 +111,7 @@ void main() {
   float thr = 1.0 - gfx.g * 1.7;
   float frostW = smoothstep(thr, thr + 0.1, crystal * 0.75 + 0.25 * edgeN);
   // hoarfrost: blue-white with the ground's texture still showing through (not a flat white decal)
-  vec3 frostCol = srgb(vec3(0.66, 0.78, 0.9)) * (0.82 + 0.3 * crystal);
+  vec3 frostCol = srgb(vec3(0.52, 0.66, 0.82)) * (0.8 + 0.32 * crystal);
   albedo = mix(albedo, frostCol, frostW * (0.75 + 0.25 * smoothstep(0.4, 0.9, gfx.g)));
   rough = mix(rough, 0.3, frostW);
 

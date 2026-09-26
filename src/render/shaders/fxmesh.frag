@@ -33,19 +33,22 @@ void main() {
     if (dot(N, V) < 0.0) N = -N;
     float ndv = max(dot(N, V), 0.0);
     float fres = pow(1.0 - ndv, 3.0);
-    vec3 deep = vec3(0.03, 0.14, 0.34), body = vec3(0.3, 0.66, 0.95) * vColor.rgb, rim = vec3(0.86, 0.95, 1.0);
-    col = mix(deep, body, clamp(ndv * 0.8 + 0.25 * vnoise(vObj.xz * 4.0 + vObj.y * 3.0 + seed * 11.0), 0.0, 1.0));
-    col *= amb * 1.6 + sun * (0.25 + 0.55 * max(dot(N, L), 0.0));
+    // saturated blue body that stays blue under the sun; the brightness lives only in rims,
+    // fractures and glints, so the crystal silhouette reads against grass and frost alike
+    vec3 deep = vec3(0.02, 0.08, 0.24), body = vec3(0.12, 0.42, 0.78) * vColor.rgb, rim = vec3(0.8, 0.93, 1.0);
+    float facet = hash13(floor(N * 7.0 + seed * 3.0)); // each facet a slightly different tone
+    col = mix(deep, body, clamp(ndv * 0.75 + 0.3 * facet, 0.0, 1.0));
+    col *= amb * 1.05 + sun * (0.1 + 0.28 * max(dot(N, L), 0.0));
     float cr = smoothstep(0.965, 0.995, 1.0 - abs(vnoise(vObj.xy * 5.0 + seed * 7.0) * 2.0 - 1.0));
-    col += rim * cr * 0.9 * (amb + sun * 0.3);
+    col += rim * cr * 0.5 * (amb + sun * 0.2);
     vec3 R = reflect(-V, N);
-    col = mix(col, mix(frame.fogColor.rgb, frame.skyColor.rgb * 1.5, clamp(R.y, 0.0, 1.0)) * 1.1, fres * 0.75);
-    col += sun * pow(max(dot(R, L), 0.0), 70.0) * 3.0;
+    col = mix(col, mix(frame.fogColor.rgb, frame.skyColor.rgb * 1.4, clamp(R.y, 0.0, 1.0)), pow(1.0 - ndv, 4.0) * 0.7);
+    col += sun * pow(max(dot(R, L), 0.0), 90.0) * 2.0;
     col += pointLights(vWorld, N) * body * 0.6;
     float glint = step(0.985, hash13(floor(vWorld * 18.0) + floor(t * 4.0 + seed * 10.0)));
-    col += vec3(2.2, 2.5, 3.0) * glint;
-    col += vec3(0.25, 0.55, 1.0) * vColor.a * 0.4; // cold inner light while forming
-    a = (0.8 + 0.2 * fres) * fade;
+    col += vec3(2.0, 2.3, 2.8) * glint;
+    col += vec3(0.25, 0.55, 1.0) * vColor.a * 0.35; // cold inner light while forming
+    a = (0.86 + 0.14 * fres) * fade;
   } else if (mat == 1) {
     // WATER: glossy aquamarine sheet, foam on the crest, sky reflection
     float e = 0.02;
@@ -59,9 +62,10 @@ void main() {
     vec3 sky = mix(frame.fogColor.rgb, frame.skyColor.rgb * 1.35, clamp(R.y, 0.0, 1.0));
     vec3 body = vColor.rgb * (amb * 1.2 + sun * 0.35 * max(dot(N, L), 0.2));
     col = mix(body, sky, fres * 0.85) + sun * pow(max(dot(R, L), 0.0), 150.0) * 5.0;
-    float crest = smoothstep(0.62, 0.9, vUV.y);
-    float streaks = smoothstep(0.55, 0.8, vnoise(vec2(vUV.x * 18.0, vUV.y * 4.0 - t * 2.2 + seed)));
-    float foam = clamp(crest * (0.55 + 0.45 * vnoise(vUV * vec2(30.0, 10.0) - vec2(0.0, t * 3.0))) + streaks * 0.35 * smoothstep(0.3, 0.7, vUV.y), 0.0, 1.0);
+    // a thick white crest and torn foam streaks running down the face: the wave's silhouette
+    float crest = smoothstep(0.5, 0.8, vUV.y);
+    float streaks = smoothstep(0.5, 0.75, vnoise(vec2(vUV.x * 16.0, vUV.y * 4.0 - t * 2.2 + seed)));
+    float foam = clamp(crest * (0.7 + 0.3 * vnoise(vUV * vec2(30.0, 10.0) - vec2(0.0, t * 3.0))) + streaks * 0.55 * smoothstep(0.25, 0.6, vUV.y), 0.0, 1.0);
     col = mix(col, vec3(0.94, 0.97, 1.0) * (amb * 1.3 + sun * 0.55), foam);
     col += pointLights(vWorld, N) * 0.3;
     a = clamp(0.68 + fres * 0.3 + foam * 0.3, 0.0, 1.0) * fade;
@@ -73,13 +77,17 @@ void main() {
     s += smoothstep(0.7, 0.95, vnoise(vec2(vUV.x * 23.0 - t * 6.0, vUV.y * 8.0 + seed))) * 0.5;
     float edge = smoothstep(0.0, 0.12, vUV.y) * smoothstep(1.0, 0.7, vUV.y);
     col = vColor.rgb * (amb * 1.2 + sun * 0.3);
-    a = s * edge * fade * 0.55;
+    a = s * edge * fade * 0.28;
   } else if (mat == 3) {
     // DUST: earthy veil, dense at the ground, torn by the spin
     float n = vnoise(vec2(vUV.x * 7.0 + vUV.y * 2.0 - t * 3.0, vUV.y * 4.0 - t * 1.2 + seed * 5.0)) * 0.7 + vnoise(vec2(vUV.x * 16.0 - t * 5.0, vUV.y * 9.0)) * 0.3;
-    float dens = pow(1.0 - vUV.y, 1.3) * 0.75 + 0.2;
-    col = vColor.rgb * (amb * 1.3 + sun * 0.5) + pointLights(vWorld, vec3(0.0, 1.0, 0.0)) * vColor.rgb * 0.5;
-    a = clamp(n * 1.3 - 0.25, 0.0, 1.0) * dens * smoothstep(1.0, 0.75, vUV.y) * fade * vColor.a;
+    // spiral bands wrapping the funnel: the rotation reads even in a still frame
+    float bands = smoothstep(0.25, 0.75, sin((vUV.x * 3.0 + vUV.y * 2.2) * 6.2832 - t * 7.0) * 0.5 + 0.5);
+    n = n * (0.55 + 0.6 * bands);
+    float dens = pow(1.0 - vUV.y, 1.1) * 0.8 + 0.3;
+    // earthy and dark at the churning base, paler where it thins out at the top
+    col = vColor.rgb * mix(0.55, 1.1, vUV.y) * (amb * 1.0 + sun * 0.32) + pointLights(vWorld, vec3(0.0, 1.0, 0.0)) * vColor.rgb * 0.5;
+    a = clamp(n * 1.8 - 0.2, 0.0, 1.0) * dens * smoothstep(1.0, 0.75, vUV.y) * fade * vColor.a;
   } else if (mat == 4) {
     // FIRE shell: flames licking up a column / whirl
     float n = vnoise(vec2(vUV.x * 9.0 + seed * 7.0, vUV.y * 3.0 - t * 4.5)) * 0.65 + vnoise(vec2(vUV.x * 21.0, vUV.y * 7.0 - t * 8.0)) * 0.35;

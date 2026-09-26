@@ -82,6 +82,7 @@ flows to whoever builds, harmonises and holds the land.
 | Garrison Camp 兵营 | 3×3 | 500 | −20 | Qi Shrine | Infantry |
 | Jade Refinery 玉坊 | 4×3 | 1800 | −30 | Qi Shrine | Refinery (+free Wooden Ox) |
 | Artificer Workshop 工坊 | 4×4 | 2000 | −40 | Refinery | Machines |
+| Five Elements Academy 五行书院 | 4×4 | 1500 | −30 | Garrison Camp + Qi Shrine | Adepts (tier-2 building pulled forward in the prototype) |
 | Jade Vault 玉库 | 1×1 | 150 | −5 | Refinery | Storage |
 | Arrow Tower 箭楼 | 1×1 | 500 | −10 | Garrison Camp | Defence |
 | Rammed-Earth Wall 城墙 | 1×1 | 40 | 0 | Yamen | Wall (drag) |
@@ -92,6 +93,10 @@ flows to whoever builds, harmonises and holds the land.
 | Archer 弓手 | 150 | Garrison Camp | Ranged, hits air, tower garrison |
 | Daoist Initiate 道士 | 300 | Garrison Camp (+Qi Shrine) | Talisman splash, *Ward* ability |
 | Artificer 工匠 | 500 | Garrison Camp | Capture / repair (engineer) |
+| Fire Adept 火术士 | 450 | Academy | Fire Serpent (burns) · **Wildfire** (burning ground) |
+| Ice Adept 冰术士 | 450 | Academy | Frost Lance (chills; wet → freeze) · **Glacier Spikes** (line freeze) |
+| Water Adept 水术士 | 400 | Academy | Water Whip (soaks, shoves) · **Tidal Surge** (knockback, douses fire) |
+| Air Adept 风术士 | 450 | Academy | Gale Blade (shoves) · **Whirlwind** (lifts and drops infantry) |
 | Wooden Ox 木牛 | 1200 | Workshop (+Refinery) | Harvester |
 | Gliding Horse 流马 | 500 | Workshop | Fast clockwork scout |
 | Imperial Caravan 御辇 | 3000 | Workshop | MCV → deploys into Yamen |
@@ -163,6 +168,13 @@ Xian of Kunlun tier 4 (sketch): **Nine-Heavens Sword Array** (orbital strike of 
 * **Design check (builders vs rushers)**: tier-1 infantry deal ×0.15–0.2 to fortified structures,
   towers out-trade infantry, structures self-repair after 12 s, and Mandate only comes from
   buildings — an early rush on a Yamen with towers stalls.
+
+### Magic (added after M1 review)
+The four schools, their visual grammar and every spell's beats are specified in
+[VFX.md](VFX.md). Signature spells auto-cast on a good cluster or are aimed with **Q**; statuses
+are burning, chilled, frozen, wet, knocked back and lifted; reactions tie the schools together
+(wet + ice → frozen solid, wet + lightning → bonus damage and arcs, water/ice → douse fire,
+whirlwind + fire → fire whirl, fire → thaws ice).
 
 ## 10. Milestones
 | # | Milestone | Content |

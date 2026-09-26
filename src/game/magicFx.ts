@@ -262,14 +262,14 @@ export class MagicFx {
       }
       case 'ice': {
         // frost mist creeps in, crystals condense around the raised staff, snow spirals up
-        v.light([p[0], p[1] + 2.2, p[2]], C.iceLight, 7, 5, dur + 0.2, { attack: dur });
-        this.ground.stamp(FROST, p[0], p[2], 1.6, 0.8);
+        v.light([p[0], p[1] + 2.2, p[2]], C.iceLight, 2.5, 4, dur + 0.2, { attack: dur });
+        this.ground.stamp(FROST, p[0], p[2], 1.4, 0.7);
         v.run(dur, (k) => {
           if (R() < 0.7) {
             const a = R() * 6.28, r = rr(1.6, 2.4);
-            ps.spawn({ pos: [p[0] + Math.cos(a) * r, p[1] + 0.25, p[2] + Math.sin(a) * r], vel: [-Math.cos(a) * 2, 0.05, -Math.sin(a) * 2], life: 0.9, size: [0.5, 0.9], color: C.frostMist, cell: FX.steam, drag: 1.5, rot: R() * 6 });
+            ps.spawn({ pos: [p[0] + Math.cos(a) * r, p[1] + 0.25, p[2] + Math.sin(a) * r], vel: [-Math.cos(a) * 2, 0.05, -Math.sin(a) * 2], life: 0.9, size: [0.45, 0.8], color: [0.7, 0.82, 0.98, 0.22], cell: FX.steam, drag: 1.5, rot: R() * 6 });
           }
-          ps.spawn({ pos: p, orbit: { anchor: { pos: [p[0] + 0.25, p[1] + 2.1, p[2]] }, r: 1.1 * (1 - k) + 0.1, a: R() * 6.28, w: 4, h: rr(-0.3, 0.3) }, life: 0.35, size: [0.14, 0.08], color: C.ice, cell: FX.crystal, additive: true, mode: MODE.twinkle, intensity: [2.4, 3.2], rot: R() * 6 });
+          if (R() < 0.6) ps.spawn({ pos: p, orbit: { anchor: { pos: [p[0] + 0.25, p[1] + 2.1, p[2]] }, r: 1.1 * (1 - k) + 0.1, a: R() * 6.28, w: 4, h: rr(-0.3, 0.3) }, life: 0.35, size: [0.16, 0.09], color: [0.6, 0.85, 1, 1], cell: FX.crystal, additive: true, mode: MODE.twinkle, intensity: [1.5, 2], rot: R() * 6 });
           if (R() < 0.5) ps.spawn({ pos: p, orbit: { anchor, r: 0.9, a: R() * 6.28, w: 3, h: 0.1, lift: 1.8 }, life: 1, size: [0.12, 0.1], color: [1, 1, 1, 1], cell: FX.snowflake, additive: true, intensity: [1.6, 1], vrot: 2 });
         });
         this.g.sfx('ice_cast', p);
@@ -471,11 +471,11 @@ export class MagicFx {
         const c: V3 = [p[0], p[1] + 1, p[2]];
         if (pf?.trail) pf.trail.life = pf.trail.age + 0.4;
         this.shatter(c, 9, 0.22, 4.5);
-        ps.spawn({ pos: [p[0], p[1] + 0.09, p[2]], life: 1.6, size: [1.5, 1.6], color: [0.82, 0.92, 1, 0.85], color1: [0.82, 0.92, 1, 0], cell: FX.frostburst, flat: true, rot: R() * 6, fadeIn: 0.02 });
-        for (let i = 0; i < 4; i++) ps.spawn({ pos: [c[0] + rr(-0.3, 0.3), c[1] - 0.4, c[2] + rr(-0.3, 0.3)], vel: [rr(-1, 1), rr(0.2, 1), rr(-1, 1)], life: rr(0.8, 1.2), size: [0.4, 1.1], color: [0.9, 0.95, 1, 0.55], cell: FX.steam, drag: 2, rot: R() * 6 });
+        ps.spawn({ pos: [p[0], p[1] + 0.09, p[2]], life: 1.6, size: [1.5, 1.6], color: [0.75, 0.88, 1, 0.55], color1: [0.75, 0.88, 1, 0], cell: FX.frostburst, flat: true, rot: R() * 6, fadeIn: 0.02 });
+        for (let i = 0; i < 2; i++) ps.spawn({ pos: [c[0] + rr(-0.3, 0.3), c[1] - 0.4, c[2] + rr(-0.3, 0.3)], vel: [rr(-1, 1), rr(0.2, 1), rr(-1, 1)], life: rr(0.8, 1.2), size: [0.4, 1], color: [0.85, 0.92, 1, 0.3], cell: FX.steam, drag: 2, rot: R() * 6 });
         for (let i = 0; i < 8; i++) ps.spawn({ pos: c, vel: [rr(-2, 2), rr(0, 2.5), rr(-2, 2)], life: rr(0.5, 0.9), size: [0.12, 0.05], color: C.ice, cell: FX.crystal, additive: true, mode: MODE.twinkle, drag: 2, gravity: 3, intensity: [3, 2], rot: R() * 6 });
-        v.light(c, C.iceLight, 10, 5, 0.3, { attack: 0.01 });
-        this.ground.stamp(FROST, p[0], p[2], 1.3, 0.85);
+        v.light(c, C.iceLight, 3.5, 4, 0.3, { attack: 0.01 });
+        this.ground.stamp(FROST, p[0], p[2], 1.2, 0.8);
         this.g.sfx('ice_hit', p);
         break;
       }
@@ -583,7 +583,7 @@ export class MagicFx {
     v.later(spread, () => {
       if (zf.doused) return;
       this.g.sfx('fire_erupt', p);
-      v.light([p[0], p[1] + 2, p[2]], [1, 0.5, 0.18], 16, R0 * 2 + 5, 0.7, { attack: 0.02 });
+      v.light([p[0], p[1] + 2, p[2]], [1, 0.45, 0.15], 9, R0 * 2 + 4, 0.7, { attack: 0.02 });
       v.flash = Math.max(v.flash, 0.08);
       // a crown of tall, separate tongues at the rim (gaps between them keep the silhouette)
       const n = Math.round(R0 * 3);
@@ -592,7 +592,7 @@ export class MagicFx {
         const x = p[0] + Math.cos(a) * R0 * rr(0.92, 1.04), z = p[2] + Math.sin(a) * R0 * rr(0.92, 1.04);
         const y = this.g.h(x, z);
         const hgt = rr(1.8, 2.8);
-        ps.spawn({ pos: [x, y + hgt * 0.8, z], vel: [Math.cos(a) * 0.6, rr(2.5, 4.5), Math.sin(a) * 0.6], life: rr(0.7, 1.1), size: [hgt, 0.8], aspect: 0.4, color: [1, 1, 1, 1], cell: FX.flame, mode: MODE.flame, additive: true, intensity: [1.9, 0.9] });
+        ps.spawn({ pos: [x, y + hgt * 0.8, z], vel: [Math.cos(a) * 0.6, rr(2.5, 4.5), Math.sin(a) * 0.6], life: rr(0.7, 1.1), size: [hgt, 0.8], aspect: 0.4, color: [1, 0.9, 0.8, 1], cell: FX.flame, mode: MODE.flame, additive: true, intensity: [1.5, 0.7] });
       }
       // a black mushroom of smoke punches up from the centre
       for (let i = 0; i < 10; i++) ps.spawn({ pos: [p[0] + rr(-1.5, 1.5), p[1] + rr(1, 3), p[2] + rr(-1.5, 1.5)], vel: [rr(-1, 1), rr(3, 6), rr(-1, 1)], life: rr(2.5, 3.5), size: [1.8, 5], color: [0.08, 0.07, 0.065, 0.75], cell: FX.smoke, mode: MODE.dissolve, drag: 1.2, rot: R() * 6, vrot: rr(-0.4, 0.4) });
@@ -600,12 +600,7 @@ export class MagicFx {
         const a = R() * 6.28, r = Math.sqrt(R()) * R0;
         ps.spawn({ pos: [p[0] + Math.cos(a) * r, p[1] + 0.5, p[2] + Math.sin(a) * r], vel: [rr(-2, 2), rr(5, 11), rr(-2, 2)], life: rr(0.8, 1.6), size: [0.08, 0.03], color: C.ember, cell: FX.spark, additive: true, stretch: 0.04, gravity: 6, drag: 0.6, intensity: [4, 1.5] });
       }
-      v.mesh(MESH.column, MAT.fire, [1, 1, 1, 1], 0.9, (m) => {
-        const k = m.age / 0.9;
-        m4FromTRS([p[0], p[1] - 0.2, p[2]], yawQ(m.age * 2), [R0 * (0.95 + k * 0.1), 4.2 * (1 - k * 0.5), R0 * (0.95 + k * 0.1)], m.matrix);
-        m.fade = Math.min(1, (1 - k) * 2);
-      });
-      ps.spawn({ pos: [p[0], p[1] + 0.12, p[2]], life: 0.55, size: [R0 * 0.8, R0 * 2.2], color: [1, 0.5, 0.2, 1], cell: FX.shock, additive: true, flat: true, intensity: [1.4, 0.1] });
+      ps.spawn({ pos: [p[0], p[1] + 0.12, p[2]], life: 0.5, size: [R0 * 0.9, R0 * 2.1], color: [1, 0.38, 0.1, 1], cell: FX.shock, additive: true, flat: true, intensity: [0.7, 0.05] });
       ps.spawn({ pos: [p[0], p[1] + 1, p[2]], life: 0.5, size: [R0, R0 * 2.6], color: [1, 1, 1, 1], cell: FX.shock, distort: true, intensity: [3, 0] });
       this.ground.stamp(HEAT, p[0], p[2], R0, 0.8, { rough: 0.5 });
       this.ground.stamp(SCORCH, p[0], p[2], R0 * 1.12, 0.95, { rough: 0.5 });
@@ -630,7 +625,8 @@ export class MagicFx {
     }
     if (R() < 0.8) ps.spawn({ pos: [p[0] + rr(-R0, R0) * 0.7, p[1] + 0.5, p[2] + rr(-R0, R0) * 0.7], vel: [rr(-0.5, 0.5), rr(2, 5), rr(-0.5, 0.5)], life: rr(1, 2), size: [0.06, 0.02], color: C.ember, cell: FX.ember, additive: true, intensity: [4, 1] });
     // a column of black smoke — the dark half of fire's value structure, visible from afar
-    if (R() < 0.7) ps.spawn({ pos: [p[0] + rr(-R0, R0) * 0.5, p[1] + rr(2, 3.2), p[2] + rr(-R0, R0) * 0.5], vel: [rr(0.2, 0.8), rr(2, 3), rr(-0.3, 0.3)], life: rr(3.5, 5), size: [1.6, 5], color: [0.07, 0.065, 0.06, 0.62], cell: FX.smoke, mode: MODE.dissolve, drag: 0.3, rot: R() * 6, vrot: rr(-0.3, 0.3) });
+    // (it leans downwind, so from the RTS camera it trails away from the flames instead of hiding under them)
+    if (R() < 0.7) ps.spawn({ pos: [p[0] + rr(-R0, R0) * 0.4 + R0 * 0.3, p[1] + rr(3, 4.5), p[2] + rr(-R0, R0) * 0.4 - R0 * 0.3], vel: [rr(1.5, 2.6), rr(2, 3), rr(-1.8, -0.8)], life: rr(4, 5.5), size: [2, 6], color: [0.07, 0.065, 0.06, 0.66], cell: FX.smoke, mode: MODE.dissolve, drag: 0.15, rot: R() * 6, vrot: rr(-0.3, 0.3) });
     if (R() < 0.5) ps.spawn({ pos: [p[0] + rr(-R0, R0) * 0.6, p[1] + 1.5, p[2] + rr(-R0, R0) * 0.6], vel: [0, 1.6, 0], life: 1, size: [1.4, 2.4], color: [1, 1, 1, 0.8], cell: FX.flame, mode: 1, distort: true, distortKind: 1 });
     if (this.g.time - zf.lastStamp > 0.3) {
       zf.lastStamp = this.g.time;
@@ -641,10 +637,10 @@ export class MagicFx {
   // ---------------------------------------------------------------- ICE: Glacier Spikes
   private spike(zf: ZoneFx, p: V3, i: number) {
     const v = this.v;
-    const spikes: [number, number, number, number][] = [[0, 0, rr(2.3, 3.1), rr(0.42, 0.55)]];
-    for (let k = 0; k < 3; k++) {
-      const a = R() * 6.28, r = rr(0.45, 0.8);
-      spikes.push([Math.cos(a) * r, Math.sin(a) * r, rr(1.1, 2), rr(0.25, 0.38)]);
+    const spikes: [number, number, number, number][] = [[0, 0, rr(3, 4), rr(0.5, 0.65)]];
+    for (let k = 0; k < 2; k++) {
+      const a = R() * 6.28, r = rr(0.6, 0.95);
+      spikes.push([Math.cos(a) * r, Math.sin(a) * r, rr(1.4, 2.3), rr(0.3, 0.42)]);
     }
     for (const [ox, oz, hgt, rad] of spikes) {
       const x = p[0] + ox, z = p[2] + oz;
@@ -660,19 +656,19 @@ export class MagicFx {
       zf.spikes.push({ mesh, x, z, h: hgt });
     }
     // the ground cracks white along the line, water beneath freezes
-    this.ground.stamp(FROST, p[0], p[2], 1.8, 1, { rough: 0.5 });
-    if (zf.lastSpike) this.ground.stampLine(FROST, zf.lastSpike[0], zf.lastSpike[1], p[0], p[2], 1.1, 1);
+    this.ground.stamp(FROST, p[0], p[2], 1.4, 0.9, { rough: 0.6 });
+    if (zf.lastSpike) this.ground.stampLine(FROST, zf.lastSpike[0], zf.lastSpike[1], p[0], p[2], 0.8, 0.9, { rough: 0.6 });
     zf.lastSpike = [p[0], p[2]];
     this.shatter([p[0], p[1] + 0.4, p[2]], 5, 0.18, 5, true);
-    for (let k = 0; k < 3; k++) this.ps.spawn({ pos: [p[0] + rr(-0.6, 0.6), p[1] + 0.3, p[2] + rr(-0.6, 0.6)], vel: [rr(-1.5, 1.5), rr(0.5, 1.5), rr(-1.5, 1.5)], life: rr(0.8, 1.3), size: [0.6, 1.5], color: [0.92, 0.96, 1, 0.6], cell: FX.steam, drag: 2, rot: R() * 6 });
-    v.light([p[0], p[1] + 1.5, p[2]], C.iceLight, 12, 6, 0.25, { attack: 0.01 });
+    this.ps.spawn({ pos: [p[0] + rr(-0.6, 0.6), p[1] + 0.3, p[2] + rr(-0.6, 0.6)], vel: [rr(-1.5, 1.5), rr(0.5, 1.5), rr(-1.5, 1.5)], life: rr(0.8, 1.3), size: [0.5, 1.3], color: [0.85, 0.92, 1, 0.3], cell: FX.steam, drag: 2, rot: R() * 6 });
+    v.light([p[0], p[1] + 1.5, p[2]], C.iceLight, 4, 5, 0.25, { attack: 0.01 });
     this.g.sfx('ice_spike', p, i === 0 ? 1 : 0.55);
   }
   private glacierTick(zf: ZoneFx) {
     if (!zf.spikes.length) return;
     const s = zf.spikes[(R() * zf.spikes.length) | 0];
     const y = this.g.h(s.x, s.z);
-    if (R() < 0.6) this.ps.spawn({ pos: [s.x + rr(-0.8, 0.8), y + 0.2, s.z + rr(-0.8, 0.8)], vel: [rr(-0.3, 0.3), 0.05, rr(-0.3, 0.3)], life: rr(1.2, 2), size: [0.6, 1.4], color: C.frostMist, cell: FX.steam, drag: 0.5, rot: R() * 6 });
+    if (R() < 0.35) this.ps.spawn({ pos: [s.x + rr(-0.8, 0.8), y + 0.2, s.z + rr(-0.8, 0.8)], vel: [rr(-0.3, 0.3), 0.05, rr(-0.3, 0.3)], life: rr(1.2, 2), size: [0.5, 1.2], color: [0.72, 0.84, 1, 0.2], cell: FX.steam, drag: 0.5, rot: R() * 6 });
     if (R() < 0.7) this.ps.spawn({ pos: [s.x + rr(-0.2, 0.2), y + rr(0.3, s.h * 0.9), s.z + rr(-0.2, 0.2)], life: 0.35, size: [0.2, 0.05], color: [1, 1, 1, 1], cell: FX.star, additive: true, intensity: [4, 2], rot: R() * 6 });
   }
 
@@ -688,7 +684,7 @@ export class MagicFx {
     const travel = len / speed;
     this.g.sfx('wave', [o[0], this.g.h(o[0], o[2]), o[2]]);
     let prev = 0;
-    const m = this.v.mesh(MESH.wave, MAT.water, [0.12, 0.47, 0.54, 1], travel + 0.7, (mm) => {
+    const m = this.v.mesh(MESH.wave, MAT.water, [0.05, 0.34, 0.42, 1], travel + 0.7, (mm) => {
       const t = mm.age;
       const f = Math.min(len, speed * Math.max(0, t - 0.08));
       zf.front = f;
@@ -696,8 +692,8 @@ export class MagicFx {
       const collapse = clamp((t - travel - 0.05) / 0.55);
       const x = o[0] + dir[0] * f, z = o[2] + dir[2] * f;
       const wdt = W0 * (0.65 + 0.55 * (f / len));
-      const hgt = 2.4 * rise * (1 - collapse * 0.95);
-      m4FromTRS([x, this.g.h(x, z) - 0.1, z], yawQ(yaw), [wdt, hgt, 2.4 + collapse * 1.5], mm.matrix);
+      const hgt = 2.8 * rise * (1 - collapse * 0.95);
+      m4FromTRS([x, this.g.h(x, z) - 0.1, z], yawQ(yaw), [wdt, hgt, 3.2 + collapse * 1.5], mm.matrix);
       mm.fade = 1 - collapse * collapse;
       // soak the ground behind the front
       if (f > prev + 0.4) {
@@ -707,17 +703,37 @@ export class MagicFx {
       if (collapse > 0 && !zf.ended) return;
       // spray and foam off the crest, mist, splashes at the base
       const side: V3 = [dir[2], 0, -dir[0]];
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 6; i++) {
         const u = rr(-0.5, 0.5) * wdt * 0.9;
         const cx = x + side[0] * u + dir[0] * 0.3, cz = z + side[2] * u + dir[2] * 0.3;
         const cy = this.g.h(cx, cz) + hgt * rr(0.85, 1.05);
-        this.ps.spawn({ pos: [cx, cy, cz], vel: [dir[0] * rr(3, 6), rr(1.5, 4), dir[2] * rr(3, 6)], life: rr(0.5, 0.9), size: [0.35, 0.9], color: [0.93, 0.97, 1, 0.8], cell: FX.foam, drag: 2, gravity: 4, rot: R() * 6 });
+        this.ps.spawn({ pos: [cx, cy, cz], vel: [dir[0] * rr(3, 6), rr(1.5, 4), dir[2] * rr(3, 6)], life: rr(0.5, 0.9), size: [0.5, 1.2], color: [0.9, 0.96, 1, 0.8], cell: FX.foam, drag: 2, gravity: 4, rot: R() * 6 });
         this.ps.spawn({ pos: [cx, cy, cz], vel: [dir[0] * rr(4, 8) + rr(-1, 1), rr(2, 5), dir[2] * rr(4, 8) + rr(-1, 1)], life: 1.2, size: [0.07, 0.07], color: C.spray, cell: FX.droplet, gravity: 11, stretch: 0.05, ground: 'die' });
       }
       if (R() < 0.5) this.ps.spawn({ pos: [x + side[0] * rr(-0.5, 0.5) * wdt, this.g.h(x, z) + hgt * 0.8, z + side[2] * rr(-0.5, 0.5) * wdt], vel: [dir[0] * 2, 1, dir[2] * 2], life: 1.2, size: [1, 2.6], color: [0.85, 0.93, 0.96, 0.3], cell: FX.steam, drag: 1, rot: R() * 6 });
       if (R() < 0.35) this.splash([x + side[0] * rr(-0.5, 0.5) * wdt + dir[0] * 1.2, this.g.h(x, z), z + side[2] * rr(-0.5, 0.5) * wdt + dir[2] * 1.2], 1.4, true);
+      // flecks of foam riding the sheet of water behind the wave
+      if (R() < 0.7) {
+        const u = rr(-0.5, 0.5) * wdt, back = rr(0.5, 2.5);
+        const fx = x + side[0] * u - dir[0] * back, fz = z + side[2] * u - dir[2] * back;
+        this.ps.spawn({ pos: [fx, this.g.h(fx, fz) + 0.1, fz], vel: [dir[0] * 2, 0, dir[2] * 2], life: rr(0.9, 1.4), size: [rr(0.5, 0.9), rr(0.8, 1.3)], color: [0.8, 0.92, 0.95, 0.4], color1: [0.8, 0.92, 0.95, 0], cell: FX.foam, flat: true, drag: 1.5, rot: R() * 6, vrot: rr(-0.5, 0.5) });
+      }
     });
     zf.meshes.push(m);
+    // a sheet of water flowing over the ground from the caster to the wave front
+    const sheet: V3[] = [];
+    for (let i = 0; i < 12; i++) sheet.push([o[0], this.g.h(o[0], o[2]) + 0.15, o[2]]);
+    this.ps.trail({
+      pts: sheet, width: [W0 * 0.8, W0 * 0.45], color: [0.1, 0.46, 0.55, 0.75], color1: [0.1, 0.46, 0.55, 0.2], intensity: 1, life: travel + 1.3, fadeOut: 0.45, additive: false, material: TRAIL.water, scroll: 6,
+      update: (tr) => {
+        const f = zf.front;
+        for (let i = 0; i < tr.pts.length; i++) {
+          const d = f * (1 - i / (tr.pts.length - 1)); // head (wave front) first
+          const px = o[0] + dir[0] * d, pz = o[2] + dir[2] * d;
+          tr.pts[i] = [px, this.g.h(px, pz) + 0.15, pz];
+        }
+      },
+    });
     // the wave breaks at the end
     this.v.later(travel + 0.05, () => {
       const x = o[0] + dir[0] * len, z = o[2] + dir[2] * len;
@@ -735,13 +751,14 @@ export class MagicFx {
   // ---------------------------------------------------------------- AIR: Whirlwind
   private whirlStart(zf: ZoneFx, p: V3) {
     const v = this.v;
-    const dust = v.mesh(MESH.funnel, MAT.dust, [0.58, 0.48, 0.35, 0.9], 60, (m) => {
+    // a tall, narrow dust devil (from the RTS camera a wide funnel would read as a fountain)
+    const dust = v.mesh(MESH.funnel, MAT.dust, [0.52, 0.42, 0.3, 1], 60, (m) => {
       const k = clamp((this.g.time - zf.t0) / 0.5);
-      m4FromTRS([zf.x, this.g.h(zf.x, zf.z) - 0.2, zf.z], yawQ(-this.g.time * 5), [3.1 * easeOut(k), 8.5 * easeOut(k), 3.1 * easeOut(k)], m.matrix);
+      m4FromTRS([zf.x, this.g.h(zf.x, zf.z) - 0.2, zf.z], yawQ(-this.g.time * 5), [2.1 * easeOut(k), 9.5 * easeOut(k), 2.1 * easeOut(k)], m.matrix);
     });
     const streak = v.mesh(MESH.funnel, MAT.wind, [0.92, 0.95, 1, 1], 60, (m) => {
       const k = clamp((this.g.time - zf.t0) / 0.5);
-      m4FromTRS([zf.x, this.g.h(zf.x, zf.z) - 0.2, zf.z], yawQ(-this.g.time * 7), [3.6 * easeOut(k), 9.4 * easeOut(k), 3.6 * easeOut(k)], m.matrix);
+      m4FromTRS([zf.x, this.g.h(zf.x, zf.z) - 0.2, zf.z], yawQ(-this.g.time * 7), [2.5 * easeOut(k), 10.2 * easeOut(k), 2.5 * easeOut(k)], m.matrix);
     });
     zf.meshes.push(dust, streak);
     v.gust(zf.x, zf.z, 11, -1.5, zf.zone.life / TICK_HZ, () => (zf.ended ? null : [zf.x, zf.z]));
@@ -757,14 +774,14 @@ export class MagicFx {
     // dust skirt thrown out at the base
     for (let i = 0; i < 3; i++) ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(1, 1.8), a: R() * 6.28, w: rr(3.5, 5), dr: rr(1, 2.2), h: rr(0, 0.3), lift: rr(0.1, 0.5) }, life: rr(0.9, 1.4), size: [0.9, 2.4], color: C.dust, cell: FX.dust, rot: R() * 6, vrot: 1.5 });
     // debris, leaves and petals climb the funnel
-    if (R() < 0.9) {
-      const cell = R() < 0.45 ? FX.leaf : R() < 0.6 ? FX.petal : FX.debris;
+    for (let i = 0; i < 2; i++) {
+      const cell = R() < 0.4 ? FX.leaf : R() < 0.5 ? FX.petal : FX.debris;
       ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(0.5, 1), a: R() * 6.28, w: rr(6, 9), dr: 0.35, h: rr(0.2, 1), lift: rr(2.5, 4) }, life: rr(1.8, 2.6), size: [cell === FX.debris ? 0.18 : 0.15, 0.15], color: cell === FX.leaf ? C.leaf : [1, 1, 1, 1], cell, rot: R() * 6, vrot: rr(-10, 10) });
     }
     if (R() < 0.4) ps.spawn({ pos: [a.pos[0], a.pos[1] + 0.2, a.pos[2]], life: 0.5, size: [2.2, 3.2], color: [1, 1, 1, 1], cell: FX.swirl, distort: true, vrot: -8, rot: R() * 6, intensity: [1.4, 0.8] });
     if (R() < 0.25) ps.spawn({ pos: [a.pos[0], a.pos[1] + 0.06, a.pos[2]], life: 0.7, size: [1.8, 2.6], color: [0.9, 0.84, 0.72, 0.28], cell: FX.swirl, flat: true, vrot: -7, rot: R() * 6 });
     if (zf.fire) {
-      for (let i = 0; i < 2; i++) ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(0.4, 1.1), a: R() * 6.28, w: rr(6, 8), dr: 0.3, h: rr(0.2, 1), lift: rr(3, 5) }, life: rr(0.6, 1), size: [rr(0.8, 1.3), 0.3], aspect: 0.55, color: [1, 1, 1, 1], cell: FX.flame, mode: MODE.flame, additive: true, intensity: [2.6, 1.2] });
+      if (R() < 0.8) ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(0.6, 1.2), a: R() * 6.28, w: rr(6, 8), dr: 0.25, h: rr(0.2, 1), lift: rr(3, 5) }, life: rr(0.6, 1), size: [rr(0.9, 1.4), 0.3], aspect: 0.45, color: [1, 0.9, 0.8, 1], cell: FX.flame, mode: MODE.flame, additive: true, intensity: [1.6, 0.8] });
       if (R() < 0.8) ps.spawn({ pos: a.pos, orbit: { anchor: a, r: rr(0.3, 1.5), a: R() * 6.28, w: 7, dr: 0.6, h: 0.5, lift: rr(4, 7) }, life: 1.4, size: [0.07, 0.03], color: C.ember, cell: FX.ember, additive: true, intensity: [4, 1] });
     }
   }
@@ -781,12 +798,15 @@ export class MagicFx {
   private igniteWhirl(zf: ZoneFx) {
     if (zf.fire) return;
     zf.fire = true;
-    const [dust] = zf.meshes;
-    if (dust) {
-      dust.mat = MAT.fire;
-      dust.color = [1, 1, 1, 1];
+    // the dust funnel chars to smoke and the wind shell catches fire: a dark column wrapped in
+    // spiralling orange tongues (not a glowing blob)
+    const [dust, streak] = zf.meshes;
+    if (dust) dust.color = [0.16, 0.12, 0.1, 1];
+    if (streak) {
+      streak.mat = MAT.fire;
+      streak.color = [0.75, 0.5, 0.35, 1];
     }
-    this.v.light([zf.x, this.g.h(zf.x, zf.z) + 3, zf.z], C.fireLight, 28, 14, zf.zone.life / TICK_HZ, { flicker: 1, follow: () => (zf.ended ? null : [zf.x, this.g.h(zf.x, zf.z) + 3, zf.z]) });
+    this.v.light([zf.x, this.g.h(zf.x, zf.z) + 3, zf.z], C.fireLight, 9, 12, zf.zone.life / TICK_HZ, { flicker: 1, follow: () => (zf.ended ? null : [zf.x, this.g.h(zf.x, zf.z) + 3, zf.z]) });
     this.g.sfx('fire_erupt', [zf.x, this.g.h(zf.x, zf.z), zf.z], 0.8);
   }
 
@@ -946,7 +966,7 @@ export class MagicFx {
     }
   }
   private snowBurst(p: V3, n: number) {
-    for (let i = 0; i < Math.min(30, n * 3); i++) this.ps.spawn({ pos: [p[0] + rr(-3, 3), p[1] + rr(0.3, 2), p[2] + rr(-3, 3)], vel: [rr(-1, 1), rr(0, 1), rr(-1, 1)], life: rr(1, 1.8), size: [0.8, 2], color: [0.94, 0.97, 1, 0.5], cell: FX.steam, drag: 1.5, rot: R() * 6 });
+    for (let i = 0; i < Math.min(14, n); i++) this.ps.spawn({ pos: [p[0] + rr(-3, 3), p[1] + rr(0.3, 2), p[2] + rr(-3, 3)], vel: [rr(-1, 1), rr(0, 1), rr(-1, 1)], life: rr(1, 1.8), size: [0.7, 1.8], color: [0.88, 0.94, 1, 0.3], cell: FX.steam, drag: 1.5, rot: R() * 6 });
   }
   private splash(c: V3, s: number, small = false) {
     const ps = this.ps;
@@ -961,7 +981,8 @@ export class MagicFx {
   }
   private ripple(c: V3, s: number) {
     const y = this.g.h(c[0], c[2]);
-    this.ps.spawn({ pos: [c[0], y + 0.06, c[2]], life: 0.9, size: [s * 0.2, s], color: [0.9, 0.96, 1, 0.7], color1: [0.9, 0.96, 1, 0], cell: FX.ripple, flat: true, fadeIn: 0.02 });
+    // soft, bluish and fading fast — never a crisp white circle (that would read as a selection ring)
+    this.ps.spawn({ pos: [c[0], y + 0.06, c[2]], life: 0.7, size: [s * 0.25, s], color: [0.7, 0.86, 0.95, 0.32], color1: [0.7, 0.86, 0.95, 0], cell: FX.ripple, flat: true, fadeIn: 0.02 });
   }
   private steamBurst(c: V3, r: number) {
     for (let i = 0; i < 26; i++) {
