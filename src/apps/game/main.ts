@@ -35,15 +35,16 @@ function glyphFaces(scale: number): GlyphFaceRequest[] {
   const ascii = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join('') + '·—’…✓×–';
   const hz = new Set<string>([...HUD_HANZI]);
   for (const e of [...factionJson.structures, ...factionJson.units]) for (const ch of e.hanzi ?? '') hz.add(ch);
+  for (const e of factionJson.units as { spell?: { hanzi?: string } }[]) for (const ch of e.spell?.hanzi ?? '') hz.add(ch);
   for (const p of rulesJson.powers) for (const ch of p.hanzi) hz.add(ch);
-  for (const ch of '天命苍朝胜败暂停小战略简单普通难') hz.add(ch);
+  for (const ch of '天命苍朝胜败暂停小战略简单普通难五行火冰水风') hz.add(ch);
   const han = [...hz].join('');
   const sz = (n: number) => Math.round(n * scale);
   // Latin faces also carry the hanzi (rendered via the CJK fallback in the font stack)
   const ui = (name: string, n: number, w = 500) => ({ name, family: 'Alegreya Sans', weight: w, size: sz(n), chars: ascii + han });
-  const disp = (name: string, n: number) => ({ name, family: 'Cinzel', weight: 700, size: sz(n), chars: ascii });
+  const disp = (name: string, n: number, withHan = false) => ({ name, family: 'Cinzel', weight: 700, size: sz(n), chars: withHan ? ascii + han : ascii });
   const cjk = (name: string, n: number) => ({ name, family: 'Noto Serif SC', weight: 700, size: sz(n), chars: han });
-  return [ui('ui11', 11), ui('ui12', 12), ui('ui13', 13), ui('ui14', 14, 700), ui('ui16', 16, 700), disp('disp16', 16), disp('disp22', 22), disp('disp28', 28), disp('disp48', 48), cjk('cjk14', 14), cjk('cjk20', 20), cjk('cjk80', 80)];
+  return [ui('ui11', 11), ui('ui12', 12), ui('ui13', 13), ui('ui14', 14, 700), ui('ui16', 16, 700), disp('disp16', 16), disp('disp22', 22, true), disp('disp28', 28), disp('disp48', 48), cjk('cjk14', 14), cjk('cjk20', 20), cjk('cjk80', 80)];
 }
 
 async function main() {
