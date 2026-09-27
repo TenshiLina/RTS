@@ -1,36 +1,130 @@
-import type { AudioOutput, Platform, InputState, Surface, PointerState, GlyphFaceRequest, GlyphAtlasData, GlyphFace } from '../platform';
+import type { AudioOutput, AudioBus, PlayOptions, Platform, InputState, Surface, PointerState, GlyphFaceRequest, GlyphAtlasData, GlyphFace } from '../platform';
 
 class WebInput implements InputState {
-  pointer: PointerState = { x: 0, y: 0, buttons: 0, wheel: 0, dx: 0, dy: 0, inside: false };
+  pointer: PointerState = { x: 0, y: 0, buttons: 0, wheel: 0, dx: 0, dy: 0, inside: false, touch: false, touches: 0 };
   keys = new Set<string>();
   pressed = new Set<string>();
   clicked = 0;
   released = 0;
+  // touch gestures: a tap is a left click, a long press a right click, one finger drags the map
+  // (reported as a middle-button drag), two fingers pan and pinch-zoom
+  private fingers = new Map<number, { x: number; y: number; sx: number; sy: number }>();
+  private gesture: 'none' | 'pending' | 'pan' | 'pinch' | 'long' = 'none';
+  private pinchDist = 0;
+  private downAt = 0;
+  private longArmed = false;
   constructor(el: HTMLElement, dpr: () => number) {
     const pos = (e: PointerEvent | MouseEvent) => {
       const r = el.getBoundingClientRect();
       return [(e.clientX - r.left) * dpr(), (e.clientY - r.top) * dpr()];
     };
-    el.addEventListener('pointermove', (e) => {
-      const [x, y] = pos(e);
+    const setPos = (x: number, y: number) => {
       this.pointer.dx += x - this.pointer.x;
       this.pointer.dy += y - this.pointer.y;
       this.pointer.x = x;
       this.pointer.y = y;
+    };
+    const mid = () => {
+      let x = 0, y = 0;
+      for (const f of this.fingers.values()) {
+        x += f.x;
+        y += f.y;
+      }
+      return [x / this.fingers.size, y / this.fingers.size];
+    };
+    const spread = () => {
+      const [a, b] = [...this.fingers.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+    const isTouch = (e: PointerEvent) => e.pointerType === 'touch';
+    el.addEventListener('pointermove', (e) => {
+      const [x, y] = pos(e);
+      if (isTouch(e)) {
+        const f = this.fingers.get(e.pointerId);
+        if (!f) return;
+        f.x = x;
+        f.y = y;
+        if (this.gesture === 'pending' && Math.hypot(x - f.sx, y - f.sy) > 12 * dpr()) {
+          this.gesture = 'pan';
+          this.pointer.buttons |= 4;
+        }
+        if (this.gesture === 'pinch' && this.fingers.size >= 2) {
+          const d = spread();
+          if (this.pinchDist > 0 && d > 0) this.pointer.wheel -= Math.log(d / this.pinchDist) / Math.log(1.12);
+          this.pinchDist = d;
+          const [mx, my] = mid();
+          setPos(mx, my);
+        } else if (this.gesture === 'pan' || this.gesture === 'pending') setPos(x, y);
+        return;
+      }
+      setPos(x, y);
       this.pointer.inside = true;
     });
     el.addEventListener('pointerdown', (e) => {
       el.setPointerCapture(e.pointerId);
+      const [x, y] = pos(e);
+      if (isTouch(e)) {
+        this.pointer.touch = true;
+        this.fingers.set(e.pointerId, { x, y, sx: x, sy: y });
+        this.pointer.touches = this.fingers.size;
+        this.pointer.inside = true;
+        if (this.fingers.size === 1) {
+          this.gesture = 'pending';
+          this.downAt = performance.now();
+          this.longArmed = false;
+          this.pointer.x = this.pointer.downX = x;
+          this.pointer.y = this.pointer.downY = y;
+        } else {
+          // a second finger: pan + pinch around the midpoint
+          this.gesture = 'pinch';
+          this.pinchDist = spread();
+          const [mx, my] = mid();
+          this.pointer.x = this.pointer.downX = mx;
+          this.pointer.y = this.pointer.downY = my;
+          this.pointer.buttons = 4;
+        }
+        return;
+      }
+      this.pointer.touch = false;
+      this.pointer.touches = 0;
+      this.pointer.downX = x;
+      this.pointer.downY = y;
       const bit = e.button === 0 ? 1 : e.button === 2 ? 2 : 4;
       this.pointer.buttons |= bit;
       this.clicked |= bit;
     });
-    el.addEventListener('pointerup', (e) => {
+    const up = (e: PointerEvent) => {
+      if (isTouch(e)) {
+        if (!this.fingers.delete(e.pointerId)) return;
+        this.pointer.touches = this.fingers.size;
+        if (this.gesture === 'pending' && e.type === 'pointerup') {
+          // a tap: press and release in one frame at the finger's position
+          this.clicked |= 1;
+          this.released |= 1;
+        }
+        if (this.fingers.size === 0) {
+          this.gesture = 'none';
+          this.pointer.buttons = 0;
+          this.pointer.inside = false;
+        } else if (this.gesture === 'pinch') {
+          // back to one finger: it keeps dragging the map
+          const [f] = [...this.fingers.values()];
+          this.gesture = 'pan';
+          this.pointer.x = this.pointer.downX = f.x;
+          this.pointer.y = this.pointer.downY = f.y;
+          this.pointer.buttons = 4;
+        }
+        return;
+      }
       const bit = e.button === 0 ? 1 : e.button === 2 ? 2 : 4;
       this.pointer.buttons &= ~bit;
       this.released |= bit;
+    };
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('pointerleave', (e) => {
+      if (!isTouch(e)) this.pointer.inside = false;
     });
-    el.addEventListener('pointerleave', () => (this.pointer.inside = false));
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -44,6 +138,19 @@ class WebInput implements InputState {
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
   }
+  /** Long press = right click. Decided in the frame loop, not on a timer, and only once the
+   *  finger has been still across two frame starts: moves queued behind a slow frame are
+   *  delivered in between, so the start of a drag can't turn into a long press. */
+  beginFrame() {
+    if (this.gesture !== 'pending' || performance.now() - this.downAt < 450) return;
+    if (!this.longArmed) {
+      this.longArmed = true;
+      return;
+    }
+    this.gesture = 'long';
+    this.clicked |= 2;
+    this.released |= 2;
+  }
   endFrame() {
     this.pointer.wheel = 0;
     this.pointer.dx = 0;
@@ -54,13 +161,16 @@ class WebInput implements InputState {
   }
 }
 
-/** WebAudio backend: buffers are created lazily once the context exists (after a gesture). */
+/** WebAudio backend: buffers are created lazily once the context exists (after a gesture).
+ *  Two buses: sound effects, and music with its own hall reverb. */
 class WebAudio implements AudioOutput {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private buses: Record<AudioBus, GainNode | null> = { sfx: null, music: null };
+  private busVol: Record<AudioBus, number> = { sfx: 1, music: 0.55 };
   private pcm = new Map<string, { data: Float32Array; rate: number }>();
   private buffers = new Map<string, AudioBuffer>();
-  private voices = 0;
+  private voices = { sfx: 0, music: 0 };
   volume = 0.8;
   constructor() {
     const unlock = () => {
@@ -68,14 +178,33 @@ class WebAudio implements AudioOutput {
         if (!this.ctx) {
           const AC = window.AudioContext ?? (window as any).webkitAudioContext;
           if (!AC) return;
-          this.ctx = new AC();
-          this.master = this.ctx.createGain();
+          const ctx: AudioContext = new AC();
+          this.ctx = ctx;
+          this.master = ctx.createGain();
           this.master.gain.value = this.volume;
           // gentle limiter so stacked explosions don't clip
-          const comp = this.ctx.createDynamicsCompressor();
+          const comp = ctx.createDynamicsCompressor();
           comp.threshold.value = -14;
           comp.ratio.value = 6;
-          this.master.connect(comp).connect(this.ctx.destination);
+          this.master.connect(comp).connect(ctx.destination);
+          for (const b of ['sfx', 'music'] as AudioBus[]) {
+            const g = ctx.createGain();
+            g.gain.value = this.busVol[b];
+            g.connect(this.master);
+            this.buses[b] = g;
+          }
+          // music: a hall reverb send (decaying stereo noise impulse)
+          const len = Math.round(ctx.sampleRate * 2.4);
+          const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+          for (let c = 0; c < 2; c++) {
+            const d = ir.getChannelData(c);
+            for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3) * Math.exp(-i / (ctx.sampleRate * 0.5));
+          }
+          const conv = ctx.createConvolver();
+          conv.buffer = ir;
+          const send = ctx.createGain();
+          send.gain.value = 0.3;
+          this.buses.music!.connect(send).connect(conv).connect(this.master);
         }
         if (this.ctx.state === 'suspended') void this.ctx.resume();
       } catch {
@@ -86,6 +215,9 @@ class WebAudio implements AudioOutput {
   }
   get ready() {
     return !!this.ctx && this.ctx.state === 'running';
+  }
+  get time() {
+    return this.ctx ? this.ctx.currentTime : 0;
   }
   register(name: string, pcm: Float32Array, sampleRate: number) {
     this.pcm.set(name, { data: pcm, rate: sampleRate });
@@ -100,8 +232,9 @@ class WebAudio implements AudioOutput {
     this.buffers.set(name, b);
     return b;
   }
-  play(name: string, opts: { volume?: number; pan?: number; rate?: number } = {}) {
-    if (!this.ready || this.voices > 40) return;
+  play(name: string, opts: PlayOptions = {}) {
+    const bus = opts.bus ?? 'sfx';
+    if (!this.ready || this.voices[bus] > (bus === 'music' ? 48 : 40)) return;
     const ctx = this.ctx!;
     const b = this.buffer(name);
     if (!b) return;
@@ -109,17 +242,31 @@ class WebAudio implements AudioOutput {
     src.buffer = b;
     src.playbackRate.value = opts.rate ?? 1;
     const g = ctx.createGain();
-    g.gain.value = opts.volume ?? 1;
+    const vol = opts.volume ?? 1;
+    g.gain.value = vol;
     const pan = ctx.createStereoPanner();
     pan.pan.value = Math.max(-1, Math.min(1, opts.pan ?? 0));
-    src.connect(g).connect(pan).connect(this.master!);
-    this.voices++;
-    src.onended = () => this.voices--;
-    src.start();
+    src.connect(g).connect(pan).connect(this.buses[bus]!);
+    this.voices[bus]++;
+    src.onended = () => this.voices[bus]--;
+    const at = Math.max(ctx.currentTime, opts.at ?? 0);
+    src.start(at);
+    if (opts.duration !== undefined) {
+      // release: a short fade instead of a click
+      const end = at + opts.duration;
+      g.gain.setValueAtTime(vol, end);
+      g.gain.linearRampToValueAtTime(0, end + 0.15);
+      src.stop(end + 0.16);
+    }
   }
   setVolume(v: number) {
     this.volume = v;
     if (this.master) this.master.gain.value = v;
+  }
+  setBusVolume(bus: AudioBus, v: number) {
+    this.busVol[bus] = v;
+    const g = this.buses[bus];
+    if (g && this.ctx) g.gain.setTargetAtTime(v, this.ctx.currentTime, 0.25);
   }
 }
 

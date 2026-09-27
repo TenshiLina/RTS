@@ -6,6 +6,8 @@
 import type { Game } from './game';
 import { TEAM_PALETTE } from './game';
 import type { Tab, EntityType } from '../sim/content';
+import type { Entity, QueueItem } from '../sim/world';
+import { audioPrefs, setAudioMode } from './audioPrefs';
 import { LEPTONS, TICK_HZ } from '../sim/intmath';
 import { CELL } from '../world/skirmishMap';
 import type { Texture } from '../render/rhi/types';
@@ -39,12 +41,22 @@ export class Hud {
     tabs: [] as Rect[],
     cells: [] as { rect: Rect; type: EntityType }[],
     buttons: [] as { rect: Rect; label: string; key: string; on?: boolean }[],
+    /** the part of the screen that shows the map (not covered by the command panel) */
+    view: [0, 0, 0, 0] as Rect,
     selPanel: null as Rect | null,
     selButtons: [] as { rect: Rect; label: string; key: string }[],
+    /** the selected building's own production queue (click an icon to cancel it) */
+    queueIcons: [] as { rect: Rect; item: QueueItem }[],
     over: null as Rect | null,
   };
+  /** command panel: sidebar on the right (landscape) or bar along the bottom (portrait) */
+  dock: 'right' | 'bottom' = 'right';
+  get viewRect(): Rect {
+    return this.L.view;
+  }
   private hoverCell: EntityType | null = null;
   private hoverPower = false;
+  private lastTap = -10;
   private blink = 0;
   private dispMandate = 0;
 
@@ -85,41 +97,82 @@ export class Hud {
     const input = g.platform.input;
     const p = input.pointer;
     const L = this.L;
-    const sw = Math.round(264 * s);
-    L.side = [W - sw, 0, sw, H];
-    const pad = 16 * s;
-    const x0 = W - sw + pad;
-    const inner = sw - pad * 2;
-    const mini = Math.round(inner - 32 * s);
-    L.mini = [x0, 44 * s, mini, mini];
-    L.qi = [x0 + mini + 8 * s, 44 * s, 24 * s, mini];
-    let y = 44 * s + mini + 12 * s;
-    L.jade = [x0, y, inner, 34 * s];
-    y += 42 * s;
-    L.mandate = [x0, y, inner, 62 * s];
-    L.power = [x0 + inner - 98 * s, y + 6 * s, 98 * s, 50 * s];
-    y += 70 * s;
-    L.tabs = TABS.map((_, i) => [x0 + (i * inner) / 4, y, inner / 4 - 3 * s, 40 * s] as Rect);
-    y += 48 * s;
     const items = this.itemsFor(this.tab);
-    const cw = (inner - 8 * s) / 2, ch = Math.round(cw * 0.72);
-    L.cells = items.map((type, i) => ({ rect: [x0 + (i % 2) * (cw + 8 * s), y + Math.floor(i / 2) * (ch + 8 * s), cw, ch] as Rect, type }));
-    const by = H - 44 * s;
-    L.buttons = [
-      { rect: [x0, by, inner / 3 - 4 * s, 32 * s], label: 'Sell', key: 'sell', on: g.mode.kind === 'sell' },
-      { rect: [x0 + inner / 3, by, inner / 3 - 4 * s, 32 * s], label: g.paused ? 'Resume' : 'Pause', key: 'pause', on: g.paused },
-      { rect: [x0 + (2 * inner) / 3, by, inner / 3, 32 * s], label: 'Home', key: 'home' },
-    ];
+    const buttons = (x0: number, by: number, inner: number) => {
+      // Sell · Pause · Home · sound (cycles music+sound → sound only → muted)
+      const aw = 44 * s, bw = (inner - aw - 4 * s) / 3;
+      return [
+        { rect: [x0, by, bw - 4 * s, 32 * s] as Rect, label: 'Sell', key: 'sell', on: g.mode.kind === 'sell' },
+        { rect: [x0 + bw, by, bw - 4 * s, 32 * s] as Rect, label: g.paused ? 'Resume' : 'Pause', key: 'pause', on: g.paused },
+        { rect: [x0 + bw * 2, by, bw - 4 * s, 32 * s] as Rect, label: 'Home', key: 'home' },
+        { rect: [x0 + bw * 3, by, aw, 32 * s] as Rect, label: audioPrefs.mode === 0 ? '♪' : audioPrefs.mode === 1 ? '♪×' : '×', key: 'audio', on: audioPrefs.mode === 2 },
+      ];
+    };
+    this.dock = W < H ? 'bottom' : 'right';
+    if (this.dock === 'right') {
+      // landscape: the C&C sidebar on the right
+      const sw = Math.round(264 * s);
+      L.side = [W - sw, 0, sw, H];
+      L.view = [0, 0, W - sw, H];
+      const pad = 16 * s;
+      const x0 = W - sw + pad;
+      const inner = sw - pad * 2;
+      const mini = Math.round(inner - 32 * s);
+      L.mini = [x0, 44 * s, mini, mini];
+      L.qi = [x0 + mini + 8 * s, 44 * s, 24 * s, mini];
+      let y = 44 * s + mini + 12 * s;
+      L.jade = [x0, y, inner, 34 * s];
+      y += 42 * s;
+      L.mandate = [x0, y, inner, 62 * s];
+      L.power = [x0 + inner - 98 * s, y + 6 * s, 98 * s, 50 * s];
+      y += 70 * s;
+      L.tabs = TABS.map((_, i) => [x0 + (i * inner) / 4, y, inner / 4 - 3 * s, 40 * s] as Rect);
+      y += 48 * s;
+      const cw = (inner - 8 * s) / 2, ch = Math.round(cw * 0.72);
+      L.cells = items.map((type, i) => ({ rect: [x0 + (i % 2) * (cw + 8 * s), y + Math.floor(i / 2) * (ch + 8 * s), cw, ch] as Rect, type }));
+      L.buttons = buttons(x0, H - 44 * s, inner);
+    } else {
+      // portrait: a command bar along the bottom — radar, resources and Heaven's Wrath in a left
+      // column, tabs and the build grid on the right — so the map keeps the full width
+      const pad = 10 * s, gap = 8 * s;
+      const mini = Math.round(Math.min(W * 0.3, 150 * s));
+      const leftW = mini + 26 * s;
+      const rx = pad + leftW + 12 * s, rw = W - rx - pad;
+      // as many columns as fit cells at least as wide as the sidebar's (names and costs must fit)
+      const cols = clamp(Math.floor((rw + gap) / (118 * s + gap)), 2, 4);
+      const cw = (rw - (cols - 1) * gap) / cols, ch = Math.round(Math.min(cw * 0.72, 80 * s));
+      const rows = Math.max(3, Math.ceil(items.length / cols));
+      const rightH = 40 * s + gap + rows * (ch + gap);
+      const leftH = mini + 8 * s + 34 * s + 6 * s + 56 * s + 4 * s + 50 * s + 8 * s + 32 * s;
+      const ph = Math.round(Math.max(leftH, rightH) + pad * 2);
+      const y0 = H - ph;
+      L.side = [0, y0, W, ph];
+      L.view = [0, 0, W, y0];
+      L.mini = [pad, y0 + pad, mini, mini];
+      L.qi = [pad + mini + 8 * s, y0 + pad, 18 * s, mini];
+      let y = y0 + pad + mini + 8 * s;
+      L.jade = [pad, y, leftW, 34 * s];
+      y += 40 * s;
+      L.mandate = [pad, y, leftW, 56 * s];
+      y += 60 * s;
+      L.power = [pad, y, leftW, 50 * s];
+      y += 58 * s;
+      L.buttons = buttons(pad, y, leftW);
+      L.tabs = TABS.map((_, i) => [rx + (i * rw) / 4, y0 + pad, rw / 4 - 3 * s, 40 * s] as Rect);
+      const gy = y0 + pad + 40 * s + gap;
+      L.cells = items.map((type, i) => ({ rect: [rx + (i % cols) * (cw + gap), gy + Math.floor(i / cols) * (ch + gap), cw, ch] as Rect, type }));
+    }
     // selection panel (bottom-left)
     const sel = [...g.selection].map((id) => g.world.get(id)).filter(Boolean);
     L.selPanel = null;
     L.selButtons = [];
     if (sel.length && !g.demo) {
-      const pw = 330 * s, ph = 92 * s;
-      L.selPanel = [12 * s, H - ph - 12 * s, pw, ph];
+      const pw = Math.min(330 * s, L.view[2] - 24 * s), ph = 92 * s;
+      const vb = L.view[1] + L.view[3];
+      L.selPanel = [12 * s, vb - ph - 12 * s, pw, ph];
       const units = g.selectedUnits();
       const bx = 12 * s + 150 * s;
-      const btn = (i: number, label: string, key: string) => L.selButtons.push({ rect: [bx + i * 58 * s, H - 12 * s - 38 * s, 54 * s, 28 * s], label, key });
+      const btn = (i: number, label: string, key: string) => L.selButtons.push({ rect: [bx + i * 58 * s, vb - 12 * s - 38 * s, 54 * s, 28 * s], label, key });
       if (units.length) {
         let i = 0;
         if (units.some((u) => g.world.utype(u).deploysInto)) btn(i++, 'Deploy', 'deploy');
@@ -127,6 +180,14 @@ export class Hud {
         if (units.some((u) => g.world.utype(u).weapon)) btn(i++, 'Attack', 'amove');
         if (units.some((u) => g.world.utype(u).spell)) btn(i++, 'Cast Q', 'cast');
       }
+      // touch: no Escape key or empty-ground click to clear the selection
+      if (input.pointer.touch) L.selButtons.push({ rect: [12 * s + pw - 34 * s, vb - ph - 12 * s + 6 * s, 28 * s, 26 * s], label: '×', key: 'deselect' });
+    }
+    L.queueIcons = [];
+    const qb = this.selectedProducer();
+    if (L.selPanel && qb) {
+      const n = Math.min(qb.prod.length, 6);
+      for (let i = 0; i < n; i++) L.queueIcons.push({ rect: [L.selPanel[0] + 122 * s + i * 34 * s, L.selPanel[1] + 50 * s, 30 * s, 30 * s], item: qb.prod[i] });
     }
 
     // --- hover + clicks
@@ -135,8 +196,11 @@ export class Hud {
     const overSide = inside(L.side, p.x, p.y);
     const overSel = L.selPanel ? inside(L.selPanel, p.x, p.y) : false;
     const over = overSide || overSel || (g.over !== null);
-    for (const c of L.cells) if (inside(c.rect, p.x, p.y)) this.hoverCell = c.type;
     const clickL = !!(input.clicked & 1), clickR = !!(input.clicked & 2);
+    if (p.touch && (clickL || clickR)) this.lastTap = g.time;
+    const hoverOk = !p.touch || (p.touches ?? 0) > 0 || g.time - this.lastTap < 2;
+    if (hoverOk) for (const c of L.cells) if (inside(c.rect, p.x, p.y)) this.hoverCell = c.type;
+    if (!hoverOk) this.hoverPower = false;
     if (g.over) {
       if (clickL && this.gameOverButton && inside(this.gameOverButton, p.x, p.y)) this.onRestart?.();
       return true;
@@ -160,6 +224,7 @@ export class Hud {
       if (clickL && this.hoverPower) this.clickPower();
       if (clickL) for (const b of L.buttons) if (inside(b.rect, p.x, p.y)) this.clickButton(b.key);
       if (clickL) for (const b of L.selButtons) if (inside(b.rect, p.x, p.y)) this.clickButton(b.key);
+      for (const q of L.queueIcons) if (inside(q.rect, p.x, p.y)) g.issue({ t: 'cancel', typeId: q.item.typeId, at: q.item.at, seq: q.item.seq });
     }
     return over;
   }
@@ -171,12 +236,37 @@ export class Hud {
     return g.content.all().filter((t) => t.tab === tab && g.cameos.has(t.id) && !(t.kind === 'structure' && t.role === 'construction_yard'));
   }
 
+  /** A single selected building of mine that has (or can have) a production queue. */
+  private selectedProducer(): Entity | null {
+    const g = this.g;
+    if (g.selection.size !== 1) return null;
+    const e = g.world.get([...g.selection][0]);
+    if (!e || e.kind !== 'structure' || e.owner !== g.me) return null;
+    return e.prod.length || g.content.all().some((t) => t.kind === 'unit' && t.producedAt.includes(e.typeId)) ? e : null;
+  }
+  /** Selected buildings that can produce `t`: new orders go to them (least busy first). */
+  private targetProducer(t: EntityType): number | undefined {
+    const g = this.g;
+    if (t.kind !== 'unit') return undefined;
+    let best: Entity | undefined, bl = Infinity;
+    for (const id of g.selection) {
+      const e = g.world.get(id);
+      if (!e || e.kind !== 'structure' || e.owner !== g.me || !e.built || !t.producedAt.includes(e.typeId)) continue;
+      const l = g.world.prodLoad(e);
+      if (l < bl) {
+        bl = l;
+        best = e;
+      }
+    }
+    return best?.id;
+  }
+
   private clickCell(t: EntityType, right: boolean) {
     const g = this.g;
     if (g.demo) return;
     const q = g.player().queues[t.tab];
     if (right) {
-      g.issue({ t: 'cancel', typeId: t.id });
+      g.issue({ t: 'cancel', typeId: t.id, at: this.targetProducer(t) });
       if (g.mode.kind === 'place' && g.mode.typeId === t.id) g.mode = { kind: 'normal' };
       return;
     }
@@ -194,7 +284,7 @@ export class Hud {
       g.say(`Requires ${this.missing(t).join(', ')}`, 'warn');
       return;
     }
-    g.issue({ t: 'queue', typeId: t.id });
+    g.issue({ t: 'queue', typeId: t.id, at: this.targetProducer(t) });
   }
   private missing(t: EntityType): string[] {
     const g = this.g;
@@ -220,6 +310,11 @@ export class Hud {
     if (key === 'stop') g.issue({ t: 'stop', ids: g.selectedUnits().map((u) => u.id) });
     if (key === 'cast') g.beginCast();
     if (key === 'amove') g.mode = { kind: 'amove' };
+    if (key === 'audio') g.say(setAudioMode(g.platform.audio, ((audioPrefs.mode + 1) % 3) as 0 | 1 | 2));
+    if (key === 'deselect') {
+      g.selection.clear();
+      g.mode = { kind: 'normal' };
+    }
   }
 
   // ------------------------------------------------------------------ drawing
@@ -242,14 +337,19 @@ export class Hud {
     }
 
     // ---- sidebar frame (lacquered wood + gold trim)
-    const [sx, , sw] = L.side;
-    ui.gradient(sx, 0, sw, H, LACQUER2, LACQUER, 1, 1);
-    for (let yy = 0; yy < H; yy += 7 * s) ui.rect(sx, yy, sw, 1, 0x000000, 0.08 + 0.05 * Math.sin(yy * 0.05));
-    ui.rect(sx, 0, 2 * s, H, GOLD, 0.9);
-    ui.rect(sx + 3 * s, 0, 1 * s, H, 0x000000, 0.6);
-    // header
-    ui.text('AZURE DYNASTY', sx + 16 * s, 11 * s, 'disp16', GOLD);
-    ui.text('苍朝', sx + sw - 16 * s, 8 * s, 'cjk20', INK, 1, { align: 'right' });
+    const [sx, sy, sw, sh] = L.side;
+    ui.gradient(sx, sy, sw, sh, LACQUER2, LACQUER, 1, 1);
+    for (let yy = sy; yy < sy + sh; yy += 7 * s) ui.rect(sx, yy, sw, 1, 0x000000, 0.08 + 0.05 * Math.sin(yy * 0.05));
+    if (this.dock === 'right') {
+      ui.rect(sx, 0, 2 * s, H, GOLD, 0.9);
+      ui.rect(sx + 3 * s, 0, 1 * s, H, 0x000000, 0.6);
+      // header
+      ui.text('AZURE DYNASTY', sx + 16 * s, 11 * s, 'disp16', GOLD);
+      ui.text('苍朝', sx + sw - 16 * s, 8 * s, 'cjk20', INK, 1, { align: 'right' });
+    } else {
+      ui.rect(0, sy, W, 2 * s, GOLD, 0.9);
+      ui.rect(0, sy + 3 * s, W, 1 * s, 0x000000, 0.6);
+    }
 
     // ---- radar
     const [mx, my, mw, mh] = L.mini;
@@ -281,7 +381,7 @@ export class Hud {
     ui.outline(jx, jy, jw, jh, 1.5 * s, GOLD_DIM, 1);
     ui.text('灵玉', jx + 10 * s, jy + 4 * s, 'cjk20', JADE);
     ui.text(Math.floor(P.jade).toLocaleString('en-US'), jx + 62 * s, jy + 5 * s, 'disp22', INK);
-    ui.text(`Qi ${P.qiProduced}/${P.qiUsed}`, jx + jw - 10 * s, jy + 10 * s, 'ui14', P.lowPower ? RED : MUTED, 1, { align: 'right' });
+    if (jw > 200 * s) ui.text(`Qi ${P.qiProduced}/${P.qiUsed}`, jx + jw - 10 * s, jy + 10 * s, 'ui14', P.lowPower ? RED : MUTED, 1, { align: 'right' });
 
     // ---- Mandate gauge + Heaven's Wrath
     const [ax, ay, , ah] = L.mandate;
@@ -312,7 +412,7 @@ export class Hud {
     L.tabs.forEach((rct, i) => {
       const t = TABS[i];
       const on = this.tab === t.tab;
-      const q = P.queues[t.tab];
+      const q = g.world.queueView(g.me, t.tab);
       const hasReady = !!q.ready;
       ui.gradient(rct[0], rct[1], rct[2], rct[3], on ? 0xc0382a : 0x4a2c22, on ? 0x7d1f14 : 0x2e1a14, 1);
       ui.outline(rct[0], rct[1], rct[2], rct[3], 1.5 * s, on ? GOLD : GOLD_DIM, 1);
@@ -338,16 +438,18 @@ export class Hud {
       if (age > 7) continue;
       const a = age < 6 ? 1 : 1 - (age - 6);
       const col = m.tone === 'warn' ? 0xffb09a : m.tone === 'good' ? 0xb8f0c8 : INK;
-      ui.text(m.text, 16 * s, my2, 'ui16', col, a);
-      my2 += 22 * s;
+      // wrapped to the map view (narrow on a portrait phone)
+      my2 += ui.paragraph(m.text, 16 * s, my2, L.view[2] - 32 * s, 'ui16', col, a) + 4 * s;
     }
     // mode hint near cursor
     const p = g.platform.input.pointer;
-    const hint = g.mode.kind === 'place' ? `Place ${g.content.get(g.mode.typeId)?.name} · right-click to cancel` : g.mode.kind === 'power' ? "Choose where Heaven's Wrath strikes · right-click to cancel" : g.mode.kind === 'sell' ? 'Sell: click one of your structures (50% refund)' : g.mode.kind === 'amove' ? 'Attack-move: click a destination' : g.mode.kind === 'cast' ? 'Choose where to cast · right-click to cancel' : '';
+    const rc = p.touch ? 'long-press' : 'right-click';
+    const hint = g.mode.kind === 'place' ? `Place ${g.content.get(g.mode.typeId)?.name} · ${rc} to cancel` : g.mode.kind === 'power' ? `Choose where Heaven's Wrath strikes · ${rc} to cancel` : g.mode.kind === 'sell' ? 'Sell: click one of your structures (50% refund)' : g.mode.kind === 'amove' ? 'Attack-move: click a destination' : g.mode.kind === 'cast' ? `Choose where to cast · ${rc} to cancel` : '';
     if (hint && !inside(L.side, p.x, p.y)) ui.text(hint, p.x + 18 * s, p.y + 16 * s, 'ui14', 0xfff2d8);
     if (g.paused && !g.over) {
-      ui.rect(0, H / 2 - 34 * s, W - sw, 68 * s, 0x000000, 0.45);
-      ui.text('Paused  暂停', (W - sw) / 2, H / 2 - 18 * s, 'disp22', GOLD, 1, { align: 'center' });
+      const [vx, vy, vw, vh] = L.view;
+      ui.rect(vx, vy + vh / 2 - 34 * s, vw, 68 * s, 0x000000, 0.45);
+      ui.text('Paused  暂停', vx + vw / 2, vy + vh / 2 - 18 * s, 'disp22', GOLD, 1, { align: 'center' });
     }
     // tooltip
     if (this.hoverCell) this.tooltip(this.hoverCell, s);
@@ -369,23 +471,34 @@ export class Hud {
     const g = this.g;
     const ui = g.ui;
     const P = g.player();
-    const q = P.queues[t.tab];
+    const q = g.world.queueView(g.me, t.tab);
     const tex = g.cameos.get(t.id);
     const can = g.world.canBuild(g.me, t.id);
     const [x, y, w, h] = r;
     ui.rect(x - 3 * s, y - 3 * s, w + 6 * s, h + 6 * s, 0x000000, 1);
     if (tex) ui.image({ texture: tex, flipY: !g.renderer.device.caps.uvOriginTop }, x, y, w, h, can ? 0xffffff : 0x6a6a6a, 1);
     const queued = q.items.filter((i) => i.typeId === t.id);
-    const head = q.items[0];
-    if (head && head.typeId === t.id) {
-      const frac = head.progress / (t.buildTicks * 100);
+    // in production: a structure at the head of its tab, or a unit at the head of some building's queue
+    let frac = -1, making = 0;
+    for (const it of queued) {
+      const head = t.kind === 'unit' ? g.world.get(it.at)?.prod[0] === it : q.items[0] === it;
+      if (!head) continue;
+      making++;
+      frac = Math.max(frac, it.progress / (t.buildTicks * 100));
+    }
+    if (frac >= 0) {
       // clock-wipe: remaining portion darkened
       ui.wipe(x, y, w, h, Math.PI * 2 * frac, Math.PI * 2, 0x000000, 0.55);
       ui.text(`${Math.floor(frac * 100)}%`, x + 6 * s, y + 4 * s, 'ui14', INK);
+      if (making > 1) ui.text(`×${making}`, x + 6 * s, y + 20 * s, 'ui12', JADE);
     } else if (queued.length) ui.rect(x, y, w, h, 0x000000, 0.35);
-    if (queued.length > 1 || (queued.length === 1 && t.kind === 'unit' && head?.typeId !== t.id)) {
-      ui.rect(x + w - 24 * s, y + 4 * s, 20 * s, 18 * s, 0x000000, 0.7);
-      ui.text(`${queued.length}`, x + w - 14 * s, y + 5 * s, 'ui14', GOLD, 1, { align: 'center' });
+    if (t.kind === 'unit' && queued.length) {
+      // how many are queued in total: a badge on the right edge, clear of the hanzi and the caption
+      const bw = Math.max(26 * s, ui.measure(`${queued.length}`, 'ui16') + 12 * s), bh = 22 * s;
+      const bx = x + w - bw - 4 * s, by = y + h - 20 * s - bh - 4 * s;
+      ui.rect(bx, by, bw, bh, 0x140c0a, 0.9);
+      ui.outline(bx, by, bw, bh, 1.5 * s, GOLD, 1);
+      ui.text(`${queued.length}`, bx + bw / 2, by + 2 * s, 'ui16', 0xfff2d8, 1, { align: 'center' });
     }
     if (q.ready === t.id) {
       ui.rect(x, y + h / 2 - 14 * s, w, 28 * s, 0x000000, 0.8);
@@ -409,8 +522,9 @@ export class Hud {
   private tooltip(t: EntityType, s: number) {
     const g = this.g;
     const ui = g.ui;
-    const w = 300 * s;
-    const x = this.L.side[0] - w - 12 * s;
+    const w = Math.min(300 * s, this.L.view[2] - 16 * s);
+    const bottom = this.dock === 'bottom';
+    const x = bottom ? clamp(g.platform.input.pointer.x - w / 2, 8 * s, this.L.view[2] - w - 8 * s) : this.L.side[0] - w - 12 * s;
     let y = Math.min(g.platform.input.pointer.y - 20 * s, g.renderer.device.backbufferHeight - 220 * s);
     const lines: [string, number][] = [];
     lines.push([`Cost ${t.cost} jade · ${Math.round(t.buildTicks / TICK_HZ)} s`, INK]);
@@ -423,7 +537,7 @@ export class Hud {
     }
     const miss = g.world.canBuild(g.me, t.id) ? [] : this.missing(t);
     const bodyH = 60 * s + lines.length * 18 * s + (miss.length ? 20 * s : 0) + 70 * s;
-    y = Math.max(8 * s, y);
+    y = bottom ? this.L.side[1] - bodyH - 8 * s : Math.max(8 * s, y);
     ui.rect(x, y, w, bodyH, 0x140c0a, 0.95);
     ui.outline(x, y, w, bodyH, 1.5 * s, GOLD, 1);
     ui.text(t.name, x + 12 * s, y + 10 * s, 'disp16', GOLD);
@@ -443,7 +557,9 @@ export class Hud {
     const g = this.g;
     const ui = g.ui;
     const pw = g.content.rules.powers[0];
-    const w = 300 * s, x = this.L.side[0] - w - 12 * s, y = this.L.power[1] - 10 * s;
+    const w = Math.min(300 * s, this.L.view[2] - 16 * s);
+    const x = this.dock === 'bottom' ? 8 * s : this.L.side[0] - w - 12 * s;
+    const y = this.dock === 'bottom' ? this.L.side[1] - 158 * s : this.L.power[1] - 10 * s;
     ui.rect(x, y, w, 150 * s, 0x140c0a, 0.95);
     ui.outline(x, y, w, 150 * s, 1.5 * s, 0x9fb4ff, 1);
     ui.text(pw.name, x + 12 * s, y + 10 * s, 'disp16', 0xcfe0ff);
@@ -471,10 +587,12 @@ export class Hud {
     ui.text(title, x + 122 * s, y + 8 * s, 'disp16', GOLD);
     if (sel.length === 1) {
       const frac = first.hp / first.maxHp;
-      ui.rect(x + 122 * s, y + 32 * s, 150 * s, 7 * s, 0x000000, 1);
-      ui.rect(x + 122 * s, y + 32 * s, 150 * s * frac, 7 * s, frac > 0.5 ? 0x5ee07a : frac > 0.25 ? 0xf0c040 : RED, 1);
       const extra = first.kind === 'unit' && g.world.utype(first).harvester ? ` · cargo ${first.cargo}` : '';
-      ui.text(`${Math.max(0, first.hp)}/${first.maxHp}${extra}`, x + 280 * s, y + 27 * s, 'ui12', MUTED);
+      const hpText = `${Math.max(0, first.hp)}/${first.maxHp}${extra}`;
+      const barW = Math.max(40 * s, w - 122 * s - ui.measure(hpText, 'ui12') - 18 * s);
+      ui.rect(x + 122 * s, y + 32 * s, barW, 7 * s, 0x000000, 1);
+      ui.rect(x + 122 * s, y + 32 * s, barW * frac, 7 * s, frac > 0.5 ? 0x5ee07a : frac > 0.25 ? 0xf0c040 : RED, 1);
+      ui.text(hpText, x + w - 8 * s, y + 27 * s, 'ui12', MUTED, 1, { align: 'right' });
     }
     // signature spell of the selected casters: name + readiness
     const casters = sel.filter((e) => e.kind === 'unit' && g.world.utype(e).spell);
@@ -483,6 +601,23 @@ export class Hud {
       const cd = Math.min(...casters.map((e) => e.spellCd)) / 15;
       ui.text(`${sp.hanzi} ${sp.name}`, x + 122 * s, y + 42 * s, 'ui12', GOLD);
       ui.text(cd > 0 ? `${Math.ceil(cd)} s` : 'ready', x + 280 * s, y + 42 * s, 'ui12', cd > 0 ? MUTED : JADE);
+    }
+    // a production building's own queue: click an icon to cancel it
+    const qb = this.selectedProducer();
+    if (qb) {
+      if (!qb.prod.length) ui.text('Idle — select it and click a unit in the sidebar to train here', x + 122 * s, y + 50 * s, 'ui12', MUTED);
+      const pt = g.platform.input.pointer;
+      for (const { rect: r, item } of this.L.queueIcons) {
+        const it = g.content.get(item.typeId)!;
+        const tex2 = g.cameos.get(item.typeId);
+        if (tex2) ui.image({ texture: tex2, flipY: !g.renderer.device.caps.uvOriginTop }, r[0], r[1], r[2], r[3]);
+        if (qb.prod[0] === item) ui.wipe(r[0], r[1], r[2], r[3], Math.PI * 2 * (item.progress / (it.buildTicks * 100)), Math.PI * 2, 0x000000, 0.55);
+        else ui.rect(r[0], r[1], r[2], r[3], 0x000000, 0.35);
+        const hov = inside(r, pt.x, pt.y);
+        ui.outline(r[0], r[1], r[2], r[3], 1.5 * s, hov ? RED : GOLD_DIM, 1);
+        if (hov) ui.text('×', r[0] + r[2] / 2, r[1] + 4 * s, 'ui16', RED, 1, { align: 'center' });
+      }
+      if (qb.prod.length > this.L.queueIcons.length) ui.text(`+${qb.prod.length - this.L.queueIcons.length}`, x + 122 * s + this.L.queueIcons.length * 34 * s + 2 * s, y + 58 * s, 'ui14', GOLD);
     }
     for (const b of this.L.selButtons) this.button(b.rect, b.label, s, g.mode.kind === 'cast' && b.key === 'cast');
   }
@@ -538,8 +673,9 @@ export class Hud {
     }
     // camera footprint
     const d = g.renderer.device;
-    const vw = d.backbufferWidth - this.L.side[2], vh = d.backbufferHeight;
-    const corners: V3[] = [g.groundAt(0, 0), g.groundAt(vw, 0), g.groundAt(vw, vh), g.groundAt(0, vh)];
+    void d;
+    const [vx, vy, vw, vh] = this.L.view;
+    const corners: V3[] = [g.groundAt(vx, vy), g.groundAt(vx + vw, vy), g.groundAt(vx + vw, vy + vh), g.groundAt(vx, vy + vh)];
     const toM = (p: V3) => [mx + clamp((p[0] - g.terrain.originX) / (g.map.cells * 3), 0, 1) * mw, my + clamp((p[2] - g.terrain.originZ) / (g.map.cells * 3), 0, 1) * mh];
     for (let i = 0; i < 4; i++) {
       const a = toM(corners[i]), b = toM(corners[(i + 1) % 4]);

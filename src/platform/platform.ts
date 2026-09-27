@@ -10,6 +10,13 @@ export interface PointerState {
   dx: number;
   dy: number;
   inside: boolean;
+  /** the pointer is a finger (touch screens): taps command, drags pan, pinches zoom */
+  touch?: boolean;
+  /** fingers currently down (0 for a mouse) */
+  touches?: number;
+  /** where the current press (or gesture) began */
+  downX?: number;
+  downY?: number;
 }
 
 export interface InputState {
@@ -20,6 +27,8 @@ export interface InputState {
   /** pointer buttons pressed / released this frame */
   clicked: number;
   released: number;
+  /** derive time-based gestures (long press); call at the start of every frame */
+  beginFrame?(): void;
   /** clear per-frame deltas; call at the end of every frame */
   endFrame(): void;
 }
@@ -70,10 +79,25 @@ export interface GlyphAtlasData {
 export interface AudioOutput {
   /** false until the device may produce sound (browsers require a user gesture) */
   readonly ready: boolean;
+  /** the audio clock (s): music is scheduled against it, not the frame clock */
+  readonly time: number;
   register(name: string, pcm: Float32Array, sampleRate: number): void;
-  play(name: string, opts?: { volume?: number; pan?: number; rate?: number }): void;
+  play(name: string, opts?: PlayOptions): void;
   setVolume(v: number): void;
+  /** per-bus volume (sound effects / music), 0..1 */
+  setBusVolume(bus: AudioBus, v: number): void;
   readonly volume: number;
+}
+export type AudioBus = 'sfx' | 'music';
+export interface PlayOptions {
+  volume?: number;
+  pan?: number;
+  rate?: number;
+  /** start time on the audio clock (default: now) */
+  at?: number;
+  bus?: AudioBus;
+  /** stop after this many seconds (with a short fade) */
+  duration?: number;
 }
 
 export interface Platform {

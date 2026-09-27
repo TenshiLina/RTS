@@ -319,4 +319,5 @@ export function buildSoundLibrary(): Map<string, Float32Array> {
   return L;
 }
 
-export { len };
+export { len, Rng, buf, noise, brown, lp, hp, bp, shape, ad, swell, sweep, osc, mixIn, sum, soft, normalize, reverb, ping, thump };
+export type { Curve };

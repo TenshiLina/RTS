@@ -31,9 +31,14 @@ npm run dev          # generates assets, then http://localhost:5173 (game) and /
 2. **Build from the sidebar** — click a cameo to start building (clock-wipe progress). When a
    structure says **READY**, click it again and place it on the grid near your base (green =
    legal; the jade lines preview **Harmony** adjacencies). Right-click a cameo to cancel.
-   Units go straight to the rally point (select a factory, right-click the ground to set it).
+   **Every production building has its own queue** and they train in parallel: a new order goes
+   to the least busy one, or to the one you have selected. Selecting a Garrison Camp shows its
+   queue (click an icon to cancel it). The count on a cameo is the total queued; "×2" means two
+   buildings are making it at once. Units walk out of their own building to its rally point
+   (select it, right-click the ground to set it).
 3. **Economy** — the **Jade Refinery** comes with a **Wooden Ox** that harvests Spirit Jade
-   fields automatically. **Qi Shrines** supply Qi (the vertical bar); in low Qi, production runs
+   fields automatically. Your oxen drive through one another and take turns at the dock, so a
+   crowd of them never jams. **Qi Shrines** supply Qi (the vertical bar); in low Qi, production runs
    at half speed and Arrow Towers go dark.
 4. **Mandate 天命** accrues from your *standing* structures × Harmony. At 100 it pays for
    **Heaven's Wrath** — a lightning strike anywhere on the map (45 s recharge).
@@ -54,8 +59,19 @@ npm run dev          # generates assets, then http://localhost:5173 (game) and /
 | S · X · D | Stop · sell mode · deploy |
 | Ctrl+1–9 / 1–9 | Assign / recall control group |
 | H · Space | Jump to base · jump to last alert |
-| Wheel · arrows · screen edge · middle-drag | Zoom · scroll · scroll · pan |
-| P · M | Pause · sound on/off |
+| Wheel · arrows · screen edge | Zoom · scroll · scroll |
+| Middle-drag | Grab the map: the ground under the cursor follows it on both axes |
+| P · M · N | Pause · all sound on/off · music on/off (also the ♪ button in the sidebar) |
+
+**Touch (phones, tablets):** tap to select; with units selected, tap the ground, jade or an enemy
+to move / harvest / attack; drag to scroll, pinch to zoom; long-press = right-click (cancel a
+build or a targeting mode); the × on the selection panel deselects. In portrait the sidebar
+becomes a command bar along the bottom.
+
+**Music** is generative: guzheng, pipa, dizi and erhu over a sheng drone in D yu-mode pentatonic,
+synthesised in the browser at start-up. It follows the fighting — calm while you build, taiko and
+a ticking clockwork pulse under tension, full drums and an erhu lead in battle
+(`npx tsx tools/render-music.ts out.wav` renders a calm → battle preview offline).
 
 URL parameters: `?start=easy|normal` skips the title screen, `?gallery=1` opens the Magic
 Gallery, `&time=<s>` fast-forwards.
@@ -92,6 +108,6 @@ tools/assetgen/     procedural modelling kit, Chinese-roof generator, humanoid r
 ```
 
 ## Not in M1 yet
-Fog of war, music, multiplayer netcode (the sim is lockstep-ready), garrisoning, drag-placed
+Fog of war, multiplayer netcode (the sim is lockstep-ready), garrisoning, drag-placed
 walls, the Artificer / Gliding Horse / Jade Vault, tier 2+, more detailed humanoid models and
 more building variety — see the milestones in the GDD.

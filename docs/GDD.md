@@ -15,7 +15,7 @@
    siege engineering, Zhuge Liang's inventions and Daoist elemental arts. Not generic Western
    fantasy with a coat of paint: the architecture, units, names and mechanics come from the setting.
 4. **C&C UX.** Sidebar build frames with cameo portraits and clock-wipe progress, *ready → place*
-   structure flow, power bar, one production queue per tab, drag-to-place walls, rally points.
+   structure flow, power bar, a production queue per building, drag-to-place walls, rally points.
 
 ## 2. Setting & factions
 
@@ -58,8 +58,13 @@ flows to whoever builds, harmonises and holds the land.
 
 * **Sidebar** (right side): radar/minimap on top, Jade counter, **Qi bar** (vertical, C&C style),
   **Mandate gauge** (jade-and-gold ring with tier pips).
-* **Four tabs**: Structures · Defence · Infantry · Machines. One production queue per tab runs in
-  parallel (RA2 behaviour); multiple factories of a type speed that queue.
+* **Four tabs**: Structures · Defence · Infantry · Machines. Structures and defences: one queue per
+  tab (C&C). Units: **every production building has its own queue** (C&C 3 / StarCraft style) —
+  a second Garrison Camp doubles infantry output and its units walk out of its own doors. A new
+  order goes to the least busy building, or to the selected one; the selection panel shows (and
+  cancels) a building's queue; losing a building refunds what it had in production.
+* **Portrait screens**: the sidebar docks along the bottom as a command bar (radar and resources
+  left, tabs and a 2–4 column build grid right) so the map keeps the full width.
 * **Cameo build frames** rendered from the actual 3D assets (the viewer has a `cameo=1` mode that
   already produces them), framed in lacquered wood with a gold edge. Progress is a radial
   clock-wipe; a completed structure flashes **"Ready"** and follows the cursor for placement over
@@ -155,7 +160,9 @@ Xian of Kunlun tier 4 (sketch): **Nine-Heavens Sword Array** (orbital strike of 
   → Artificer Workshop (more Wooden Oxen, a second Caravan) · Arrow Towers and walls on the
   Defence tab. Units: Halberdier, Archer, Daoist Initiate (talisman splash), Wooden Ox.
 * **Economy**: Oxen seek the nearest field with enough jade, harvest, return to the nearest
-  refinery; fields regrow slowly. Low Qi halves production and disables towers.
+  refinery; fields regrow slowly. A player's oxen drive through one another and take turns at
+  the dock (the rest wait nearby), and an ox that finds only regrowth trickle nearby delivers what
+  it carries instead of shuttling between near-empty nodes. Low Qi halves production and disables towers.
 * **Mandate**: each standing structure adds `mandatePerMin` × Harmony. The first power,
   **Heaven's Wrath** (100 Mandate, 45 s recharge): the storm gathers for 1.6 s, then lightning
   strikes a 2.2-cell radius (260 damage, ×0.45 vs structures — anti-army, not a base-killer).

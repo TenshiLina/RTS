@@ -26,6 +26,7 @@ import { MagicFx } from './magicFx';
 import { Sfx } from './sfx';
 import { MagicGallery } from './gallery';
 import { Hud } from './hud';
+import { audioPrefs, setAudioMode } from './audioPrefs';
 import type { Texture } from '../render/rhi/types';
 import factionJson from '../../content/factions/azure_dynasty.json';
 import rulesJson from '../../content/rules.json';
@@ -107,6 +108,9 @@ export class Game {
   private corpses: Corpse[] = [];
   private projs = new Map<number, ProjVisual>();
   private drag: { x0: number; y0: number; x1: number; y1: number; active: boolean } | null = null;
+  /** ground point held by a grab-pan, and the touch count it started with */
+  private grab: V3 | null = null;
+  private grabTouches = 0;
   private orderMarkers: { x: number; z: number; t: number; attack: boolean }[] = [];
   private smokeTimer = 0;
   private lastClick = { t: -10, id: 0 };
@@ -213,6 +217,7 @@ export class Game {
   update(dt: number) {
     this.time += dt;
     this.sound.tick(dt);
+    this.heat *= Math.exp(-dt / 10);
     if (!this.paused && !this.over) {
       this.acc += dt * this.speed;
       const step = 1 / TICK_HZ;
@@ -268,9 +273,27 @@ export class Game {
     return [this.wx(lx), this.wz(lz), f];
   }
 
+  /** Combat heat for the music: fighting involving my forces or on screen; decays over ~10 s. */
+  private heat = 0;
+  musicIntensity(): number {
+    if (this.demo) return 0.05;
+    if (this.gallery) return 0.35;
+    if (this.over) return 0;
+    return clamp(this.heat, 0, 1);
+  }
+  private heatFrom(ev: SimEvent) {
+    const near = (x: number, z: number) => Math.hypot(this.wx(x) - this.cam.target[0], this.wz(z) - this.cam.target[2]) < 45;
+    if (ev.e === 'damage') {
+      const e = this.world.get(ev.id);
+      if (e && (e.owner === this.me || near(e.x, e.z))) this.heat += Math.min(0.08, ev.amount / 400);
+    } else if (ev.e === 'death' && ev.kind !== 'projectile' && (ev.owner === this.me || near(ev.x, ev.z))) this.heat += 0.12;
+    else if (ev.e === 'powerStrike') this.heat += 0.8;
+  }
+
   handleEvents(events: SimEvent[]) {
     const W = this.world;
     for (const ev of events) {
+      this.heatFrom(ev);
       // elemental magic has its own effects module; projectile tracking below still applies
       if (this.magic.onEvent(ev) && ev.e !== 'fire') continue;
       switch (ev.e) {
@@ -646,6 +669,15 @@ export class Game {
     const dw = this.renderer.device.backbufferWidth, dh = this.renderer.device.backbufferHeight;
     return [((x / w) * 0.5 + 0.5) * dw, (1 - ((y / w) * 0.5 + 0.5)) * dh, w];
   }
+  /** Where the pointer ray meets the horizontal plane at height y, for the camera as it is now. */
+  private planeHit(px: number, py: number, y: number): V3 | null {
+    const d = this.renderer.device;
+    const cam = this.cam.build(d.backbufferWidth / d.backbufferHeight, d.caps.clip);
+    const r = screenRay(cam, px, py, d.backbufferWidth, d.backbufferHeight);
+    if (Math.abs(r.d[1]) < 1e-4) return null;
+    const t = (y - r.o[1]) / r.d[1];
+    return t > 0 ? [r.o[0] + r.d[0] * t, y, r.o[2] + r.d[2] * t] : null;
+  }
   groundAt(px: number, py: number): V3 {
     const d = this.renderer.device;
     const ray = screenRay(this.camera, px, py, d.backbufferWidth, d.backbufferHeight);
@@ -769,14 +801,22 @@ export class Game {
     if (k.has('ArrowUp')) mz += 1;
     if (k.has('ArrowDown')) mz -= 1;
     const edge = 6 * scale;
-    if (p.inside && !this.drag?.active) {
+    if (p.inside && !this.drag?.active && !this.grab && !p.touch) {
       if (p.x < edge) mx -= 1;
       if (p.x > d.backbufferWidth - edge) mx += 1;
       if (p.y < edge) mz += 1;
       if (p.y > d.backbufferHeight - edge) mz -= 1;
     }
     if (mx || mz) this.cam.pan(mx * sp, mz * sp);
-    if (p.buttons & 4) this.cam.pan(-p.dx * this.cam.distance * 0.0016, -p.dy * this.cam.distance * 0.0022);
+    // grab-pan (middle drag; one-finger drag on touch): the ground point under the pointer when
+    // the drag began stays under the pointer, so the map follows it on both axes
+    if (p.buttons & 4 && (p.touches ?? 0) === this.grabTouches) {
+      // (a finger only starts panning after a small slop, so grab where it went down)
+      if (!this.grab) this.grab = this.groundAt(p.downX ?? p.x, p.downY ?? p.y);
+      const hit = this.planeHit(p.x, p.y, this.grab[1]);
+      if (hit) this.cam.target = [this.cam.target[0] + this.grab[0] - hit[0], 0, this.cam.target[2] + this.grab[2] - hit[2]];
+    } else this.grab = null;
+    this.grabTouches = p.touches ?? 0;
     if (p.wheel && !overUI) this.cam.zoom(p.wheel);
     const half = (this.map.cells * 3) / 2 - 6;
     this.cam.target = [clamp(this.cam.target[0], -half, half), 0, clamp(this.cam.target[2], -half + 10, half + 14)];
@@ -788,10 +828,8 @@ export class Game {
       else this.selection.clear();
     }
     if (pr.has('KeyP')) this.paused = !this.paused;
-    if (pr.has('KeyM')) {
-      this.sound.muted = !this.sound.muted;
-      this.say(this.sound.muted ? 'Sound off (M)' : 'Sound on (M)');
-    }
+    if (pr.has('KeyM')) this.say(setAudioMode(this.platform.audio, audioPrefs.mode === 2 ? 0 : 2));
+    if (pr.has('KeyN')) this.say(setAudioMode(this.platform.audio, audioPrefs.mode === 0 ? 1 : 0));
     if (pr.has('KeyS') && !this.demo) this.issue({ t: 'stop', ids: this.selectedUnits().map((u) => u.id) });
     if (pr.has('KeyD') && !this.demo) for (const u of this.selectedUnits()) if (W.utype(u).deploysInto) this.issue({ t: 'deploy', id: u.id });
     if (pr.has('KeyA') && this.selectedUnits().length) this.mode = { kind: 'amove' };
@@ -881,7 +919,11 @@ export class Game {
         }
       } else {
         const t = this.pick(p.x, p.y, scale);
-        if (t && (t.kind === 'unit' || t.kind === 'structure')) {
+        const mineTapped = !!t && (t.kind === 'unit' || t.kind === 'structure') && t.owner === this.me;
+        if (p.touch && !shift && this.selectedUnits().length && !mineTapped) {
+          // touch has no right button: tapping ground, jade or an enemy commands the selection
+          this.command(p.x, p.y, scale, false);
+        } else if (t && (t.kind === 'unit' || t.kind === 'structure')) {
           // double-click: all of that type on screen
           if (this.lastClick.id === t.id && this.time - this.lastClick.t < 0.35 && t.owner === this.me) {
             for (const e of W.entities) {

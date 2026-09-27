@@ -83,6 +83,8 @@ export class Entity {
   lastDamageTick = -10000;
   rallyX = -1;
   rallyZ = -1;
+  /** this building's own production queue (units) */
+  prod: QueueItem[] = [];
   // --- jade
   amount = 0;
   maxAmount = 0;
@@ -102,7 +104,13 @@ export interface QueueItem {
   typeId: string;
   progress: number; // 0 .. buildTicks*100
   paid: number;
+  /** order of queueing (cancel removes the most recent) */
+  seq: number;
+  /** producing building (units) */
+  at: number;
 }
+/** Most items one production building holds. */
+export const MAX_BUILDING_QUEUE = 10;
 export interface Queue {
   items: QueueItem[];
   /** structure finished and waiting to be placed */
@@ -136,8 +144,8 @@ export type Command =
   | { t: 'stop'; ids: number[] }
   | { t: 'deploy'; id: number }
   | { t: 'harvest'; ids: number[]; node: number }
-  | { t: 'queue'; typeId: string }
-  | { t: 'cancel'; typeId: string }
+  | { t: 'queue'; typeId: string; at?: number }
+  | { t: 'cancel'; typeId: string; at?: number; seq?: number }
   | { t: 'place'; typeId: string; cx: number; cz: number }
   | { t: 'sell'; id: number }
   | { t: 'power'; power: string; x: number; z: number }
@@ -194,6 +202,7 @@ export interface PlayerSetup {
 
 export class World {
   tick = 0;
+  private prodSeq = 0;
   entities: Entity[] = [];
   byId = new Map<number, Entity>();
   nextId = 1;
@@ -475,10 +484,11 @@ export class World {
         const q = p.queues[t.tab];
         if (t.kind === 'structure') {
           if (q.ready || q.items.length) break; // one structure per tab at a time
-          q.items.push({ typeId: t.id, progress: 0, paid: 0 });
+          q.items.push({ typeId: t.id, progress: 0, paid: 0, seq: ++this.prodSeq, at: 0 });
         } else {
-          if (q.items.filter((i) => i.typeId === t.id).length >= 5 || q.items.length >= 12) break;
-          q.items.push({ typeId: t.id, progress: 0, paid: 0 });
+          // each production building has its own queue: the chosen one, else the least busy
+          const f = this.pickProducer(pid, t, c.at);
+          if (f) f.prod.push({ typeId: t.id, progress: 0, paid: 0, seq: ++this.prodSeq, at: f.id });
         }
         break;
       }
@@ -489,6 +499,19 @@ export class World {
         if (q.ready === t.id) {
           q.ready = null;
           p.jade += t.cost;
+          break;
+        }
+        if (t.kind === 'unit') {
+          // the most recently queued one (in the given building if there is one there)
+          const items = this.queueView(pid, t.tab).items.filter((i) => i.typeId === t.id);
+          const exact = c.seq ? items.filter((i) => i.seq === c.seq) : [];
+          const pool = exact.length ? exact : c.at && items.some((i) => i.at === c.at) ? items.filter((i) => i.at === c.at) : items;
+          const last = pool.reduce<QueueItem | null>((a, i) => (!a || i.seq > a.seq ? i : a), null);
+          const f = last ? this.get(last.at) : undefined;
+          if (last && f) {
+            p.jade += last.paid;
+            f.prod.splice(f.prod.indexOf(last), 1);
+          }
           break;
         }
         for (let i = q.items.length - 1; i >= 0; i--) {
@@ -713,6 +736,9 @@ export class World {
         for (const o of b) {
           if (o.id <= a.id) continue;
           const tb = this.utype(o);
+          // a player's harvesters drive through one another (C&C): two oxen meeting head-on in
+          // a lane only a single ox wide would otherwise jam the economy for good
+          if (ta.harvester && tb.harvester && a.owner === o.owner) continue;
           const rr = ta.radius + tb.radius;
           let ddx = o.x - a.x, ddz = o.z - a.z;
           let d2 = ddx * ddx + ddz * ddz;
@@ -816,6 +842,9 @@ export class World {
         if (this.occupancy[i] === e.id) this.occupancy[i] = 0;
       }
       const p = this.players[e.owner];
+      // whatever it was producing is cancelled and refunded
+      if (p) for (const it of e.prod) p.jade += it.paid;
+      e.prod = [];
       if (p && !sold) {
         p.mandateMilli = Math.max(0, p.mandateMilli - this.stype(e).mandatePerMin * 3000);
         p.stats.lost++;
@@ -940,7 +969,7 @@ export class World {
   }
 
   // ------------------------------------------------------------------ harvesting
-  private nearestNode(u: Entity, from?: Entity, maxCells = 64, minAmount = 150): Entity | undefined {
+  private nearestNode(u: Entity, from?: Entity, maxCells = 64, minAmount = 150, fallback = true): Entity | undefined {
     let best: Entity | undefined, bd = Infinity;
     const ox = from ? from.x : u.x, oz = from ? from.z : u.z;
     const lim = maxCells * LEPTONS;
@@ -958,8 +987,13 @@ export class World {
         best = e;
       }
     }
-    if (!best && minAmount > 1) return this.nearestNode(u, from, maxCells, 1);
+    if (!best && minAmount > 1 && fallback) return this.nearestNode(u, from, maxCells, 1);
     return best;
+  }
+  /** Another of this refinery's harvesters is unloading right now. */
+  private dockBusy(ref: Entity, u: Entity): boolean {
+    for (const o of this.entities) if (o.alive && o !== u && o.kind === 'unit' && o.dockId === ref.id && o.hState === 'unload') return true;
+    return false;
   }
   private nearestRefinery(u: Entity): Entity | undefined {
     let best: Entity | undefined, bd = Infinity;
@@ -1018,8 +1052,9 @@ export class World {
       case 'harvest': {
         const n = this.get(u.nodeId);
         if (!n || n.amount <= 0) {
-          // try another node close by, else head home
-          const next = this.nearestNode(u, u, 6);
+          // try another node close by that is worth the trip (not a regrowth trickle — hopping
+          // between those would never fill the hold), else deliver what we carry
+          const next = this.nearestNode(u, u, 6, 150, false);
           if (next && u.cargo < hv.capacity) {
             u.nodeId = next.id;
             u.hState = 'toNode';
@@ -1044,6 +1079,11 @@ export class World {
         }
         u.dockId = ref.id;
         const [dx, dz] = this.dockPoint(ref);
+        // one ox unloads at a time: the next waits a little way off instead of pressing in
+        if (this.dockBusy(ref, u) && dist2(u.x, u.z, dx, dz) <= (LEPTONS * 4) * (LEPTONS * 4)) {
+          u.path = [];
+          return;
+        }
         if (dist2(u.x, u.z, dx, dz) <= (LEPTONS / 2) * (LEPTONS / 2) || (!u.path.length && dist2(u.x, u.z, dx, dz) <= LEPTONS * LEPTONS * 2)) {
           u.path = [];
           u.hState = 'unload';
@@ -1111,10 +1151,7 @@ export class World {
       const t = this.content.get(item.typeId)!;
       if (!this.canBuild(p.id, t.id)) continue; // producer lost: pause
       const total = t.buildTicks * 100;
-      let factories = 1;
-      if (t.kind === 'unit') factories = Math.max(1, t.producedAt.reduce((n, f) => n + this.ownedCount(p.id, f), 0));
-      const step = Math.floor((speed * (100 + (factories - 1) * 50)) / 100);
-      const nextProgress = Math.min(total, item.progress + step);
+      const nextProgress = Math.min(total, item.progress + speed);
       const nextPaid = Math.floor((t.cost * nextProgress) / total);
       const due = nextPaid - item.paid;
       if (due > p.jade) {
@@ -1126,21 +1163,76 @@ export class World {
       item.progress = nextProgress;
       if (item.progress >= total) {
         q.items.shift();
-        if (t.kind === 'structure') {
-          q.ready = t.id;
-          this.events.push({ e: 'ready', player: p.id, typeId: t.id });
-        } else {
-          this.deliverUnit(p, t);
-        }
+        q.ready = t.id;
+        this.events.push({ e: 'ready', player: p.id, typeId: t.id });
+      }
+    }
+    // units: every production building works through its own queue in parallel and the unit
+    // walks out of that building (snapshot: delivering spawns entities)
+    const facs = this.entities.filter((e) => e.alive && e.kind === 'structure' && e.owner === p.id && e.prod.length > 0);
+    for (const f of facs) {
+      if (!f.built) continue;
+      const item = f.prod[0];
+      const t = this.content.units.get(item.typeId)!;
+      if (!this.canBuild(p.id, t.id)) continue; // prerequisite lost: pause
+      const total = t.buildTicks * 100;
+      const nextProgress = Math.min(total, item.progress + speed);
+      const nextPaid = Math.floor((t.cost * nextProgress) / total);
+      const due = nextPaid - item.paid;
+      if (due > p.jade) {
+        if ((this.tick + p.id) % (TICK_HZ * 8) === 0) this.events.push({ e: 'message', player: p.id, text: 'Insufficient jade', tone: 'warn' });
+        continue;
+      }
+      p.jade -= due;
+      item.paid = nextPaid;
+      item.progress = nextProgress;
+      if (item.progress >= total) {
+        f.prod.shift();
+        this.deliverUnit(p, t, f);
       }
     }
   }
 
-  private deliverUnit(p: PlayerState, t: UnitType) {
-    // pick the factory with the fewest units standing at its exit
-    const facs = this.entities.filter((e) => e.alive && e.kind === 'structure' && e.owner === p.id && e.built && t.producedAt.includes(e.typeId));
-    const f = facs[0];
-    if (!f) return;
+  /** Built production buildings of this player that can make `t`, in id order. */
+  producers(pid: number, t: UnitType): Entity[] {
+    return this.entities.filter((e) => e.alive && e.kind === 'structure' && e.owner === pid && e.built && t.producedAt.includes(e.typeId));
+  }
+  /** Work left in a building's queue (progress units). */
+  prodLoad(f: Entity): number {
+    let n = 0;
+    for (const it of f.prod) n += (this.content.units.get(it.typeId)?.buildTicks ?? 0) * 100 - it.progress;
+    return n;
+  }
+  /** The building a new unit order goes to: the requested one if it can take it, else the least busy. */
+  pickProducer(pid: number, t: UnitType, at?: number): Entity | null {
+    const facs = this.producers(pid, t).filter((f) => f.prod.length < MAX_BUILDING_QUEUE);
+    if (at) {
+      const f = facs.find((x) => x.id === at);
+      if (f) return f;
+    }
+    let best: Entity | null = null, bl = Infinity;
+    for (const f of facs) {
+      const l = this.prodLoad(f);
+      if (l < bl) {
+        bl = l;
+        best = f;
+      }
+    }
+    return best;
+  }
+  /** A tab's queue as the player sees it: structures queue per player, units per building (flattened). */
+  queueView(pid: number, tab: Tab): Queue {
+    const p = this.players[pid];
+    if (tab === 'structures' || tab === 'defense') return p.queues[tab];
+    const items: QueueItem[] = [];
+    for (const e of this.entities) {
+      if (!e.alive || e.kind !== 'structure' || e.owner !== pid || !e.prod.length) continue;
+      for (const it of e.prod) if (this.content.units.get(it.typeId)?.tab === tab) items.push(it);
+    }
+    return { items, ready: null };
+  }
+
+  private deliverUnit(p: PlayerState, t: UnitType, f: Entity) {
     const ft = this.stype(f);
     const ex = f.x + (ft.exit ? ft.exit[0] : 0), ez = f.z + (ft.exit ? ft.exit[1] : (f.h * LEPTONS) / 2 + LEPTONS);
     let x = ex, z = ez;
@@ -1306,6 +1398,11 @@ export class World {
     for (const p of this.players) {
       mix(p.jade); mix(p.mandateMilli); mix(p.harmony);
       for (const t of TAB_ORDER) for (const it of p.queues[t].items) mix(it.progress);
+    }
+    for (const e of this.entities) {
+      if (!e.alive || !e.prod.length) continue;
+      mix(e.id);
+      for (const it of e.prod) { mix(it.progress); mix(it.seq); }
     }
     return h >>> 0;
   }
