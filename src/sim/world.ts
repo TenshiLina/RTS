@@ -83,8 +83,6 @@ export class Entity {
   lastDamageTick = -10000;
   rallyX = -1;
   rallyZ = -1;
-  /** this building's own production queue (units) */
-  prod: QueueItem[] = [];
   // --- jade
   amount = 0;
   maxAmount = 0;
@@ -104,13 +102,7 @@ export interface QueueItem {
   typeId: string;
   progress: number; // 0 .. buildTicks*100
   paid: number;
-  /** order of queueing (cancel removes the most recent) */
-  seq: number;
-  /** producing building (units) */
-  at: number;
 }
-/** Most items one production building holds. */
-export const MAX_BUILDING_QUEUE = 10;
 export interface Queue {
   items: QueueItem[];
   /** structure finished and waiting to be placed */
@@ -130,6 +122,8 @@ export interface PlayerState {
   qiUsed: number;
   lowPower: boolean;
   queues: Record<Tab, Queue>;
+  /** primary building per factory type: new units walk out of it */
+  primary: Record<string, number>;
   powerCharge: Record<string, number>;
   defeated: boolean;
   lastAlertTick: number;
@@ -144,8 +138,9 @@ export type Command =
   | { t: 'stop'; ids: number[] }
   | { t: 'deploy'; id: number }
   | { t: 'harvest'; ids: number[]; node: number }
-  | { t: 'queue'; typeId: string; at?: number }
-  | { t: 'cancel'; typeId: string; at?: number; seq?: number }
+  | { t: 'queue'; typeId: string }
+  | { t: 'cancel'; typeId: string }
+  | { t: 'primary'; id: number }
   | { t: 'place'; typeId: string; cx: number; cz: number }
   | { t: 'sell'; id: number }
   | { t: 'power'; power: string; x: number; z: number }
@@ -202,7 +197,6 @@ export interface PlayerSetup {
 
 export class World {
   tick = 0;
-  private prodSeq = 0;
   entities: Entity[] = [];
   byId = new Map<number, Entity>();
   nextId = 1;
@@ -237,6 +231,7 @@ export class World {
         jade: content.rules.startJade, mandateMilli: 0, mandateAcc: 0, harmony: 100,
         qiProduced: 0, qiUsed: 0, lowPower: false,
         queues: { structures: { items: [], ready: null }, defense: { items: [], ready: null }, infantry: { items: [], ready: null }, machines: { items: [], ready: null } },
+        primary: {},
         powerCharge: Object.fromEntries(content.rules.powers.map((pw) => [pw.id, pw.chargeTicks])),
         defeated: false, lastAlertTick: -10000, startCx: st.cx, startCz: st.cz,
         stats: { built: 0, trained: 0, lost: 0, kills: 0, harvested: 0 },
@@ -484,11 +479,10 @@ export class World {
         const q = p.queues[t.tab];
         if (t.kind === 'structure') {
           if (q.ready || q.items.length) break; // one structure per tab at a time
-          q.items.push({ typeId: t.id, progress: 0, paid: 0, seq: ++this.prodSeq, at: 0 });
+          q.items.push({ typeId: t.id, progress: 0, paid: 0 });
         } else {
-          // each production building has its own queue: the chosen one, else the least busy
-          const f = this.pickProducer(pid, t, c.at);
-          if (f) f.prod.push({ typeId: t.id, progress: 0, paid: 0, seq: ++this.prodSeq, at: f.id });
+          if (q.items.filter((i) => i.typeId === t.id).length >= 5 || q.items.length >= 12) break;
+          q.items.push({ typeId: t.id, progress: 0, paid: 0 });
         }
         break;
       }
@@ -499,19 +493,6 @@ export class World {
         if (q.ready === t.id) {
           q.ready = null;
           p.jade += t.cost;
-          break;
-        }
-        if (t.kind === 'unit') {
-          // the most recently queued one (in the given building if there is one there)
-          const items = this.queueView(pid, t.tab).items.filter((i) => i.typeId === t.id);
-          const exact = c.seq ? items.filter((i) => i.seq === c.seq) : [];
-          const pool = exact.length ? exact : c.at && items.some((i) => i.at === c.at) ? items.filter((i) => i.at === c.at) : items;
-          const last = pool.reduce<QueueItem | null>((a, i) => (!a || i.seq > a.seq ? i : a), null);
-          const f = last ? this.get(last.at) : undefined;
-          if (last && f) {
-            p.jade += last.paid;
-            f.prod.splice(f.prod.indexOf(last), 1);
-          }
           break;
         }
         for (let i = q.items.length - 1; i >= 0; i--) {
@@ -564,6 +545,12 @@ export class World {
           u.targetId = 0;
           u.repathTick = 0;
         }
+        break;
+      }
+      case 'primary': {
+        // C&C primary building: new units of its kind walk out of this one
+        const s = this.get(c.id);
+        if (s && s.owner === pid && s.kind === 'structure' && s.built && this.isFactory(s.typeId)) p.primary[s.typeId] = s.id;
         break;
       }
       case 'rally': {
@@ -842,9 +829,6 @@ export class World {
         if (this.occupancy[i] === e.id) this.occupancy[i] = 0;
       }
       const p = this.players[e.owner];
-      // whatever it was producing is cancelled and refunded
-      if (p) for (const it of e.prod) p.jade += it.paid;
-      e.prod = [];
       if (p && !sold) {
         p.mandateMilli = Math.max(0, p.mandateMilli - this.stype(e).mandatePerMin * 3000);
         p.stats.lost++;
@@ -1151,7 +1135,11 @@ export class World {
       const t = this.content.get(item.typeId)!;
       if (!this.canBuild(p.id, t.id)) continue; // producer lost: pause
       const total = t.buildTicks * 100;
-      const nextProgress = Math.min(total, item.progress + speed);
+      // more factories of a kind speed the shared queue (+50% each, RA2)
+      let factories = 1;
+      if (t.kind === 'unit') factories = Math.max(1, t.producedAt.reduce((n, f) => n + this.ownedCount(p.id, f), 0));
+      const step = Math.floor((speed * (100 + (factories - 1) * 50)) / 100);
+      const nextProgress = Math.min(total, item.progress + step);
       const nextPaid = Math.floor((t.cost * nextProgress) / total);
       const due = nextPaid - item.paid;
       if (due > p.jade) {
@@ -1163,76 +1151,39 @@ export class World {
       item.progress = nextProgress;
       if (item.progress >= total) {
         q.items.shift();
-        q.ready = t.id;
-        this.events.push({ e: 'ready', player: p.id, typeId: t.id });
-      }
-    }
-    // units: every production building works through its own queue in parallel and the unit
-    // walks out of that building (snapshot: delivering spawns entities)
-    const facs = this.entities.filter((e) => e.alive && e.kind === 'structure' && e.owner === p.id && e.prod.length > 0);
-    for (const f of facs) {
-      if (!f.built) continue;
-      const item = f.prod[0];
-      const t = this.content.units.get(item.typeId)!;
-      if (!this.canBuild(p.id, t.id)) continue; // prerequisite lost: pause
-      const total = t.buildTicks * 100;
-      const nextProgress = Math.min(total, item.progress + speed);
-      const nextPaid = Math.floor((t.cost * nextProgress) / total);
-      const due = nextPaid - item.paid;
-      if (due > p.jade) {
-        if ((this.tick + p.id) % (TICK_HZ * 8) === 0) this.events.push({ e: 'message', player: p.id, text: 'Insufficient jade', tone: 'warn' });
-        continue;
-      }
-      p.jade -= due;
-      item.paid = nextPaid;
-      item.progress = nextProgress;
-      if (item.progress >= total) {
-        f.prod.shift();
-        this.deliverUnit(p, t, f);
+        if (t.kind === 'structure') {
+          q.ready = t.id;
+          this.events.push({ e: 'ready', player: p.id, typeId: t.id });
+        } else {
+          this.deliverUnit(p, t);
+        }
       }
     }
   }
 
-  /** Built production buildings of this player that can make `t`, in id order. */
-  producers(pid: number, t: UnitType): Entity[] {
-    return this.entities.filter((e) => e.alive && e.kind === 'structure' && e.owner === pid && e.built && t.producedAt.includes(e.typeId));
+  /** Does anything train at this structure type? */
+  isFactory(typeId: string): boolean {
+    for (const u of this.content.units.values()) if (u.producedAt.includes(typeId)) return true;
+    return false;
   }
-  /** Work left in a building's queue (progress units). */
-  prodLoad(f: Entity): number {
-    let n = 0;
-    for (const it of f.prod) n += (this.content.units.get(it.typeId)?.buildTicks ?? 0) * 100 - it.progress;
-    return n;
-  }
-  /** The building a new unit order goes to: the requested one if it can take it, else the least busy. */
-  pickProducer(pid: number, t: UnitType, at?: number): Entity | null {
-    const facs = this.producers(pid, t).filter((f) => f.prod.length < MAX_BUILDING_QUEUE);
-    if (at) {
-      const f = facs.find((x) => x.id === at);
-      if (f) return f;
-    }
-    let best: Entity | null = null, bl = Infinity;
-    for (const f of facs) {
-      const l = this.prodLoad(f);
-      if (l < bl) {
-        bl = l;
-        best = f;
-      }
-    }
-    return best;
-  }
-  /** A tab's queue as the player sees it: structures queue per player, units per building (flattened). */
-  queueView(pid: number, tab: Tab): Queue {
+  /** The building new units of type `t` walk out of: the primary one of its kind, else the oldest. */
+  exitBuilding(pid: number, t: UnitType): Entity | undefined {
     const p = this.players[pid];
-    if (tab === 'structures' || tab === 'defense') return p.queues[tab];
-    const items: QueueItem[] = [];
-    for (const e of this.entities) {
-      if (!e.alive || e.kind !== 'structure' || e.owner !== pid || !e.prod.length) continue;
-      for (const it of e.prod) if (this.content.units.get(it.typeId)?.tab === tab) items.push(it);
-    }
-    return { items, ready: null };
+    const facs = this.entities.filter((e) => e.alive && e.kind === 'structure' && e.owner === pid && e.built && t.producedAt.includes(e.typeId));
+    return facs.find((f) => p.primary[f.typeId] === f.id) ?? facs[0];
+  }
+  /** Is this building its player's primary of its kind (explicitly, or as the oldest)? */
+  isPrimary(s: Entity): boolean {
+    const p = this.players[s.owner];
+    if (!p || !this.isFactory(s.typeId)) return false;
+    const set = p.primary[s.typeId];
+    if (set && this.get(set)?.built) return set === s.id;
+    return this.entities.find((e) => e.alive && e.kind === 'structure' && e.owner === s.owner && e.built && e.typeId === s.typeId) === s;
   }
 
-  private deliverUnit(p: PlayerState, t: UnitType, f: Entity) {
+  private deliverUnit(p: PlayerState, t: UnitType) {
+    const f = this.exitBuilding(p.id, t);
+    if (!f) return;
     const ft = this.stype(f);
     const ex = f.x + (ft.exit ? ft.exit[0] : 0), ez = f.z + (ft.exit ? ft.exit[1] : (f.h * LEPTONS) / 2 + LEPTONS);
     let x = ex, z = ez;
@@ -1399,10 +1350,8 @@ export class World {
       mix(p.jade); mix(p.mandateMilli); mix(p.harmony);
       for (const t of TAB_ORDER) for (const it of p.queues[t].items) mix(it.progress);
     }
-    for (const e of this.entities) {
-      if (!e.alive || !e.prod.length) continue;
-      mix(e.id);
-      for (const it of e.prod) { mix(it.progress); mix(it.seq); }
+    for (const p of this.players) {
+      for (const k of Object.keys(p.primary).sort()) mix(p.primary[k]);
     }
     return h >>> 0;
   }

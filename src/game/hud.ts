@@ -6,8 +6,8 @@
 import type { Game } from './game';
 import { TEAM_PALETTE } from './game';
 import type { Tab, EntityType } from '../sim/content';
-import type { Entity, QueueItem } from '../sim/world';
-import { audioPrefs, setAudioMode } from './audioPrefs';
+import type { Entity } from '../sim/world';
+import { audioPrefs, nextTrack } from './audioPrefs';
 import { LEPTONS, TICK_HZ } from '../sim/intmath';
 import { CELL } from '../world/skirmishMap';
 import type { Texture } from '../render/rhi/types';
@@ -26,7 +26,7 @@ const TABS: { tab: Tab; hz: string; name: string }[] = [
   { tab: 'machines', hz: '机', name: 'Machines' },
 ];
 
-export const HUD_HANZI = '苍朝天命灵玉气营防兵机胜败罚暂停' + TABS.map((t) => t.hz).join('');
+export const HUD_HANZI = '苍朝天命灵玉气营防兵机胜败罚暂停主' + TABS.map((t) => t.hz).join('');
 
 export class Hud {
   tab: Tab = 'structures';
@@ -45,8 +45,6 @@ export class Hud {
     view: [0, 0, 0, 0] as Rect,
     selPanel: null as Rect | null,
     selButtons: [] as { rect: Rect; label: string; key: string }[],
-    /** the selected building's own production queue (click an icon to cancel it) */
-    queueIcons: [] as { rect: Rect; item: QueueItem }[],
     over: null as Rect | null,
   };
   /** command panel: sidebar on the right (landscape) or bar along the bottom (portrait) */
@@ -99,13 +97,13 @@ export class Hud {
     const L = this.L;
     const items = this.itemsFor(this.tab);
     const buttons = (x0: number, by: number, inner: number) => {
-      // Sell · Pause · Home · sound (cycles music+sound → sound only → muted)
+      // Sell · Pause · Home · music (cycles the tracks, then off)
       const aw = 44 * s, bw = (inner - aw - 4 * s) / 3;
       return [
         { rect: [x0, by, bw - 4 * s, 32 * s] as Rect, label: 'Sell', key: 'sell', on: g.mode.kind === 'sell' },
         { rect: [x0 + bw, by, bw - 4 * s, 32 * s] as Rect, label: g.paused ? 'Resume' : 'Pause', key: 'pause', on: g.paused },
         { rect: [x0 + bw * 2, by, bw - 4 * s, 32 * s] as Rect, label: 'Home', key: 'home' },
-        { rect: [x0 + bw * 3, by, aw, 32 * s] as Rect, label: audioPrefs.mode === 0 ? '♪' : audioPrefs.mode === 1 ? '♪×' : '×', key: 'audio', on: audioPrefs.mode === 2 },
+        { rect: [x0 + bw * 3, by, aw, 32 * s] as Rect, label: audioPrefs.muted ? '×' : audioPrefs.track < 0 ? '♪×' : `♪${audioPrefs.track + 1}`, key: 'audio', on: audioPrefs.muted || audioPrefs.track < 0 },
       ];
     };
     this.dock = W < H ? 'bottom' : 'right';
@@ -183,12 +181,9 @@ export class Hud {
       // touch: no Escape key or empty-ground click to clear the selection
       if (input.pointer.touch) L.selButtons.push({ rect: [12 * s + pw - 34 * s, vb - ph - 12 * s + 6 * s, 28 * s, 26 * s], label: '×', key: 'deselect' });
     }
-    L.queueIcons = [];
-    const qb = this.selectedProducer();
-    if (L.selPanel && qb) {
-      const n = Math.min(qb.prod.length, 6);
-      for (let i = 0; i < n; i++) L.queueIcons.push({ rect: [L.selPanel[0] + 122 * s + i * 34 * s, L.selPanel[1] + 50 * s, 30 * s, 30 * s], item: qb.prod[i] });
-    }
+    // a single production building: make it the primary (units of its kind walk out of it)
+    const fac = this.selectedFactory();
+    if (L.selPanel && fac && !g.world.isPrimary(fac)) L.selButtons.push({ rect: [L.selPanel[0] + 122 * s, L.selPanel[1] + L.selPanel[3] - 32 * s, 110 * s, 26 * s], label: 'Set primary', key: 'primary' });
 
     // --- hover + clicks
     this.hoverCell = null;
@@ -224,7 +219,6 @@ export class Hud {
       if (clickL && this.hoverPower) this.clickPower();
       if (clickL) for (const b of L.buttons) if (inside(b.rect, p.x, p.y)) this.clickButton(b.key);
       if (clickL) for (const b of L.selButtons) if (inside(b.rect, p.x, p.y)) this.clickButton(b.key);
-      for (const q of L.queueIcons) if (inside(q.rect, p.x, p.y)) g.issue({ t: 'cancel', typeId: q.item.typeId, at: q.item.at, seq: q.item.seq });
     }
     return over;
   }
@@ -236,29 +230,12 @@ export class Hud {
     return g.content.all().filter((t) => t.tab === tab && g.cameos.has(t.id) && !(t.kind === 'structure' && t.role === 'construction_yard'));
   }
 
-  /** A single selected building of mine that has (or can have) a production queue. */
-  private selectedProducer(): Entity | null {
+  /** A single selected, finished building of mine that trains units. */
+  private selectedFactory(): Entity | null {
     const g = this.g;
     if (g.selection.size !== 1) return null;
     const e = g.world.get([...g.selection][0]);
-    if (!e || e.kind !== 'structure' || e.owner !== g.me) return null;
-    return e.prod.length || g.content.all().some((t) => t.kind === 'unit' && t.producedAt.includes(e.typeId)) ? e : null;
-  }
-  /** Selected buildings that can produce `t`: new orders go to them (least busy first). */
-  private targetProducer(t: EntityType): number | undefined {
-    const g = this.g;
-    if (t.kind !== 'unit') return undefined;
-    let best: Entity | undefined, bl = Infinity;
-    for (const id of g.selection) {
-      const e = g.world.get(id);
-      if (!e || e.kind !== 'structure' || e.owner !== g.me || !e.built || !t.producedAt.includes(e.typeId)) continue;
-      const l = g.world.prodLoad(e);
-      if (l < bl) {
-        bl = l;
-        best = e;
-      }
-    }
-    return best?.id;
+    return e && e.kind === 'structure' && e.owner === g.me && e.built && g.world.isFactory(e.typeId) ? e : null;
   }
 
   private clickCell(t: EntityType, right: boolean) {
@@ -266,7 +243,7 @@ export class Hud {
     if (g.demo) return;
     const q = g.player().queues[t.tab];
     if (right) {
-      g.issue({ t: 'cancel', typeId: t.id, at: this.targetProducer(t) });
+      g.issue({ t: 'cancel', typeId: t.id });
       if (g.mode.kind === 'place' && g.mode.typeId === t.id) g.mode = { kind: 'normal' };
       return;
     }
@@ -284,7 +261,7 @@ export class Hud {
       g.say(`Requires ${this.missing(t).join(', ')}`, 'warn');
       return;
     }
-    g.issue({ t: 'queue', typeId: t.id, at: this.targetProducer(t) });
+    g.issue({ t: 'queue', typeId: t.id });
   }
   private missing(t: EntityType): string[] {
     const g = this.g;
@@ -310,7 +287,11 @@ export class Hud {
     if (key === 'stop') g.issue({ t: 'stop', ids: g.selectedUnits().map((u) => u.id) });
     if (key === 'cast') g.beginCast();
     if (key === 'amove') g.mode = { kind: 'amove' };
-    if (key === 'audio') g.say(setAudioMode(g.platform.audio, ((audioPrefs.mode + 1) % 3) as 0 | 1 | 2));
+    if (key === 'primary') {
+      for (const id of g.selection) g.issue({ t: 'primary', id });
+      g.say('Primary building set — new units leave here', 'good');
+    }
+    if (key === 'audio') g.say(nextTrack(g.platform.audio));
     if (key === 'deselect') {
       g.selection.clear();
       g.mode = { kind: 'normal' };
@@ -412,7 +393,7 @@ export class Hud {
     L.tabs.forEach((rct, i) => {
       const t = TABS[i];
       const on = this.tab === t.tab;
-      const q = g.world.queueView(g.me, t.tab);
+      const q = P.queues[t.tab];
       const hasReady = !!q.ready;
       ui.gradient(rct[0], rct[1], rct[2], rct[3], on ? 0xc0382a : 0x4a2c22, on ? 0x7d1f14 : 0x2e1a14, 1);
       ui.outline(rct[0], rct[1], rct[2], rct[3], 1.5 * s, on ? GOLD : GOLD_DIM, 1);
@@ -471,26 +452,19 @@ export class Hud {
     const g = this.g;
     const ui = g.ui;
     const P = g.player();
-    const q = g.world.queueView(g.me, t.tab);
+    const q = P.queues[t.tab];
     const tex = g.cameos.get(t.id);
     const can = g.world.canBuild(g.me, t.id);
     const [x, y, w, h] = r;
     ui.rect(x - 3 * s, y - 3 * s, w + 6 * s, h + 6 * s, 0x000000, 1);
     if (tex) ui.image({ texture: tex, flipY: !g.renderer.device.caps.uvOriginTop }, x, y, w, h, can ? 0xffffff : 0x6a6a6a, 1);
     const queued = q.items.filter((i) => i.typeId === t.id);
-    // in production: a structure at the head of its tab, or a unit at the head of some building's queue
-    let frac = -1, making = 0;
-    for (const it of queued) {
-      const head = t.kind === 'unit' ? g.world.get(it.at)?.prod[0] === it : q.items[0] === it;
-      if (!head) continue;
-      making++;
-      frac = Math.max(frac, it.progress / (t.buildTicks * 100));
-    }
-    if (frac >= 0) {
+    const head = q.items[0];
+    if (head && head.typeId === t.id) {
+      const frac = head.progress / (t.buildTicks * 100);
       // clock-wipe: remaining portion darkened
       ui.wipe(x, y, w, h, Math.PI * 2 * frac, Math.PI * 2, 0x000000, 0.55);
       ui.text(`${Math.floor(frac * 100)}%`, x + 6 * s, y + 4 * s, 'ui14', INK);
-      if (making > 1) ui.text(`×${making}`, x + 6 * s, y + 20 * s, 'ui12', JADE);
     } else if (queued.length) ui.rect(x, y, w, h, 0x000000, 0.35);
     if (t.kind === 'unit' && queued.length) {
       // how many are queued in total: a badge on the right edge, clear of the hanzi and the caption
@@ -602,22 +576,15 @@ export class Hud {
       ui.text(`${sp.hanzi} ${sp.name}`, x + 122 * s, y + 42 * s, 'ui12', GOLD);
       ui.text(cd > 0 ? `${Math.ceil(cd)} s` : 'ready', x + 280 * s, y + 42 * s, 'ui12', cd > 0 ? MUTED : JADE);
     }
-    // a production building's own queue: click an icon to cancel it
-    const qb = this.selectedProducer();
-    if (qb) {
-      if (!qb.prod.length) ui.text('Idle — select it and click a unit in the sidebar to train here', x + 122 * s, y + 50 * s, 'ui12', MUTED);
-      const pt = g.platform.input.pointer;
-      for (const { rect: r, item } of this.L.queueIcons) {
-        const it = g.content.get(item.typeId)!;
-        const tex2 = g.cameos.get(item.typeId);
-        if (tex2) ui.image({ texture: tex2, flipY: !g.renderer.device.caps.uvOriginTop }, r[0], r[1], r[2], r[3]);
-        if (qb.prod[0] === item) ui.wipe(r[0], r[1], r[2], r[3], Math.PI * 2 * (item.progress / (it.buildTicks * 100)), Math.PI * 2, 0x000000, 0.55);
-        else ui.rect(r[0], r[1], r[2], r[3], 0x000000, 0.35);
-        const hov = inside(r, pt.x, pt.y);
-        ui.outline(r[0], r[1], r[2], r[3], 1.5 * s, hov ? RED : GOLD_DIM, 1);
-        if (hov) ui.text('×', r[0] + r[2] / 2, r[1] + 4 * s, 'ui16', RED, 1, { align: 'center' });
-      }
-      if (qb.prod.length > this.L.queueIcons.length) ui.text(`+${qb.prod.length - this.L.queueIcons.length}`, x + 122 * s + this.L.queueIcons.length * 34 * s + 2 * s, y + 58 * s, 'ui14', GOLD);
+    // production building: primary status and the speed bonus from owning several
+    const fac = this.selectedFactory();
+    if (fac) {
+      const n = g.world.ownedCount(g.me, fac.typeId);
+      const speed = n > 1 ? `${n} built · training ×${(1 + (n - 1) * 0.5).toFixed(1)}` : '';
+      if (g.world.isPrimary(fac)) {
+        ui.text('主 Primary — new units leave here', x + 122 * s, y + 44 * s, 'ui12', GOLD);
+        if (speed) ui.text(speed, x + 122 * s, y + 62 * s, 'ui12', MUTED);
+      } else ui.text(`Not primary${speed ? ' · ' + speed : ''}`, x + 122 * s, y + 44 * s, 'ui12', MUTED);
     }
     for (const b of this.L.selButtons) this.button(b.rect, b.label, s, g.mode.kind === 'cast' && b.key === 'cast');
   }
@@ -627,6 +594,17 @@ export class Hud {
     const ui = g.ui;
     for (const e of g.world.entities) {
       if (!e.alive || (e.kind !== 'unit' && e.kind !== 'structure')) continue;
+      // the primary of several production buildings of a kind wears a gold 主 tag
+      if (e.kind === 'structure' && e.owner === g.me && e.built && g.world.isFactory(e.typeId) && g.world.ownedCount(g.me, e.typeId) > 1 && g.world.isPrimary(e)) {
+        const top = g.lib.manifest.get(g.world.stype(e).model)?.bounds.max[1] ?? 6;
+        const wx = g.wx(e.x), wz = g.wz(e.z);
+        const pp = g.project([wx, g.h(wx, wz) + top, wz]);
+        if (pp[2] > 0) {
+          ui.rect(pp[0] - 12 * s, pp[1] - 36 * s, 24 * s, 24 * s, 0x140c0a, 0.85);
+          ui.outline(pp[0] - 12 * s, pp[1] - 36 * s, 24 * s, 24 * s, 1.5 * s, GOLD, 1);
+          ui.text('主', pp[0], pp[1] - 35 * s, 'cjk20', GOLD, 1, { align: 'center' });
+        }
+      }
       const sel = g.selection.has(e.id);
       if (!sel && e.hp >= e.maxHp && g.hoverId !== e.id) continue;
       let wx: number, wz: number, top: number;

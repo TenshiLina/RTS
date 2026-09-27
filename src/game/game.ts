@@ -26,7 +26,7 @@ import { MagicFx } from './magicFx';
 import { Sfx } from './sfx';
 import { MagicGallery } from './gallery';
 import { Hud } from './hud';
-import { audioPrefs, setAudioMode } from './audioPrefs';
+import { nextTrack, toggleMute } from './audioPrefs';
 import type { Texture } from '../render/rhi/types';
 import factionJson from '../../content/factions/azure_dynasty.json';
 import rulesJson from '../../content/rules.json';
@@ -828,8 +828,8 @@ export class Game {
       else this.selection.clear();
     }
     if (pr.has('KeyP')) this.paused = !this.paused;
-    if (pr.has('KeyM')) this.say(setAudioMode(this.platform.audio, audioPrefs.mode === 2 ? 0 : 2));
-    if (pr.has('KeyN')) this.say(setAudioMode(this.platform.audio, audioPrefs.mode === 0 ? 1 : 0));
+    if (pr.has('KeyM')) this.say(toggleMute(this.platform.audio));
+    if (pr.has('KeyN')) this.say(nextTrack(this.platform.audio));
     if (pr.has('KeyS') && !this.demo) this.issue({ t: 'stop', ids: this.selectedUnits().map((u) => u.id) });
     if (pr.has('KeyD') && !this.demo) for (const u of this.selectedUnits()) if (W.utype(u).deploysInto) this.issue({ t: 'deploy', id: u.id });
     if (pr.has('KeyA') && this.selectedUnits().length) this.mode = { kind: 'amove' };
@@ -924,8 +924,12 @@ export class Game {
           // touch has no right button: tapping ground, jade or an enemy commands the selection
           this.command(p.x, p.y, scale, false);
         } else if (t && (t.kind === 'unit' || t.kind === 'structure')) {
-          // double-click: all of that type on screen
+          // double-click: all of that type on screen; on a production building, make it primary (C&C)
           if (this.lastClick.id === t.id && this.time - this.lastClick.t < 0.35 && t.owner === this.me) {
+            if (t.kind === 'structure' && W.isFactory(t.typeId)) {
+              this.issue({ t: 'primary', id: t.id });
+              this.say(`${W.stype(t).name} is now the primary — new units leave here`, 'good');
+            }
             for (const e of W.entities) {
               if (!e.alive || e.typeId !== t.typeId || e.owner !== this.me || e.kind !== 'unit') continue;
               const [x, z] = this.pos(e);

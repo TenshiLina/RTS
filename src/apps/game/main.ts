@@ -13,7 +13,7 @@ import { HUD_HANZI } from '../../game/hud';
 import { buildSoundLibrary, SAMPLE_RATE } from '../../audio/synth';
 import { buildMusicLibrary } from '../../audio/instruments';
 import { Music } from '../../audio/music';
-import { applyAudioPrefs, audioPrefs } from '../../game/audioPrefs';
+import { applyAudioPrefs, audioPrefs, musicLabel, nextTrack, toggleMute } from '../../game/audioPrefs';
 import type { Difficulty } from '../../sim/ai';
 import type { UIRenderer } from '../../render/ui';
 import type { GlyphAtlasData, GlyphFaceRequest } from '../../platform/platform';
@@ -35,7 +35,7 @@ const bootMsg = (t: string) => {
 };
 
 function glyphFaces(scale: number): GlyphFaceRequest[] {
-  const ascii = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join('') + '·—’…✓×–♪';
+  const ascii = Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).join('') + '·—’…✓×–♪›';
   const hz = new Set<string>([...HUD_HANZI]);
   for (const e of [...factionJson.structures, ...factionJson.units]) for (const ch of e.hanzi ?? '') hz.add(ch);
   for (const e of factionJson.units as { spell?: { hanzi?: string } }[]) for (const ch of e.spell?.hanzi ?? '') hz.add(ch);
@@ -138,6 +138,16 @@ async function main() {
       ui.outline(x, y, bw, bh, 2 * s, hov ? 0xffe6a0 : 0xd9ad52, 1);
       ui.text(label, cx, y + 11 * s, 'disp22', 0xfff2d8, 1, { align: 'center' });
     });
+    // music selector: click to hear the next track (N does the same in game)
+    {
+      const y = top + 220 * s + 3 * (bh + 14 * s) + 4 * s, mh = 34 * s;
+      const x = cx - bw / 2;
+      const hov = p.x >= x && p.x < x + bw && p.y >= y && p.y < y + mh;
+      if (hov) hoverBtn = 3;
+      ui.rect(x, y, bw, mh, 0x000000, hov ? 0.55 : 0.35);
+      ui.outline(x, y, bw, mh, 1.5 * s, hov ? 0xffe6a0 : 0x8a6a30, 1);
+      ui.text(`♪  ${musicLabel()}  ›`, cx, y + 8 * s, 'ui16', hov ? 0xfff2d8 : 0xd8ccb0, 1, { align: 'center' });
+    }
     const touchHelp = 'Touch: tap to select, tap the ground to move / attack / harvest · drag to scroll · pinch to zoom · long-press to cancel';
     if (narrow) {
       // phones: the touch controls matter, the keyboard reference doesn't fit
@@ -148,7 +158,7 @@ async function main() {
     const help = [
       'Deploy your Imperial Caravan (select it, press D or click it again), then build from the sidebar.',
       'Left-click select · drag to box-select · right-click to move / attack / harvest · A = attack-move',
-      'S stop · X sell · H home · Space last alert · Ctrl+1–9 groups · wheel zoom · middle-drag or arrows to scroll · P pause · M sound · N music',
+      'S stop · X sell · H home · Space last alert · Ctrl+1–9 groups · wheel zoom · middle-drag or arrows to scroll · P pause · M mute · N next music track',
       touchHelp,
       'Mandate (天命) grows from standing buildings × Harmony; spend it on Heaven’s Wrath.',
     ];
@@ -162,7 +172,7 @@ async function main() {
     ui.gradient(0, 0, W, 96 * s, 0x000000, 0x000000, 0.7, 0);
     ui.text(gal.caption, W / 2, 14 * s, 'disp22', 0xf3e2b8, 1, { align: 'center' });
     ui.text(gal.sub, W / 2, 48 * s, 'ui14', 0xd8ccb0, 0.95, { align: 'center' });
-    ui.text('Esc — back to the title  ·  wheel — zoom  ·  M — sound  ·  N — music', W / 2, ui.height - 28 * s, 'ui13', 0xcfc2a4, 0.85, { align: 'center' });
+    ui.text('Esc — back to the title  ·  wheel — zoom  ·  M — mute  ·  N — next music track', W / 2, ui.height - 28 * s, 'ui13', 0xcfc2a4, 0.85, { align: 'center' });
   };
 
   game = newGame('normal', true);
@@ -221,7 +231,13 @@ async function main() {
         game.ui.setGlyphs(a);
       });
     }
-    if (title && platform.input.clicked & 1 && hoverBtn >= 0) {
+    // the title's attract game takes no input: music keys here
+    if (title && platform.input.pressed.has('KeyN')) nextTrack(platform.audio);
+    if (title && platform.input.pressed.has('KeyM')) toggleMute(platform.audio);
+    if (title && platform.input.clicked & 1 && hoverBtn === 3) {
+      nextTrack(platform.audio);
+      platform.input.endFrame();
+    } else if (title && platform.input.clicked & 1 && hoverBtn >= 0) {
       title = false;
       if (hoverBtn === 2) {
         game = newGame('normal', false, true);
@@ -239,7 +255,8 @@ async function main() {
     // the score follows the fighting (title and gallery have their own moods)
     const target = title ? 0 : game.musicIntensity();
     music.intensity += (target - music.intensity) * Math.min(1, dt * (target > music.intensity ? 1.5 : 0.25));
-    music.enabled = audioPrefs.mode === 0;
+    music.enabled = !audioPrefs.muted && audioPrefs.track >= 0;
+    if (music.enabled && music.track !== audioPrefs.track) music.setTrack(audioPrefs.track);
     music.update();
     platform.input.endFrame();
     frames++;

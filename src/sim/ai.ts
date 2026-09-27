@@ -38,7 +38,6 @@ const INFANTRY_MIX = [
   'azure_halberdier', 'azure_halberdier', 'azure_archer', 'azure_fire_adept', 'azure_halberdier', 'azure_archer',
   'azure_ice_adept', 'azure_daoist', 'azure_water_adept', 'azure_halberdier', 'azure_air_adept', 'azure_archer',
 ];
-const INFANTRY_PRODUCERS = new Set(['azure_barracks', 'azure_academy']);
 
 export function createSkirmishAI(difficulty: Difficulty = 'easy') {
   const S: AIState = {
@@ -105,17 +104,14 @@ export function createSkirmishAI(difficulty: Difficulty = 'easy') {
 
     // 3. economy: two oxen per refinery
     const refineries = w.ownedCount(p.id, 'azure_jade_refinery');
-    const machinesQ = w.queueView(p.id, 'machines').items;
-    const oxen = units.filter((u) => w.utype(u).harvester).length + machinesQ.filter((i) => i.typeId === 'azure_wooden_ox').length;
-    if (refineries && oxen < refineries * 2 && w.canBuild(p.id, 'azure_wooden_ox') && machinesQ.length === 0 && p.jade > 900) {
+    const oxen = units.filter((u) => w.utype(u).harvester).length + p.queues.machines.items.filter((i) => i.typeId === 'azure_wooden_ox').length;
+    if (refineries && oxen < refineries * 2 && w.canBuild(p.id, 'azure_wooden_ox') && p.queues.machines.items.length === 0 && p.jade > 900) {
       w.issue(p.id, { t: 'queue', typeId: 'azure_wooden_ox' });
     }
 
     // 4. infantry
     const reserve = refineries === 0 ? 1400 : !w.ownedCount(p.id, 'azure_workshop', false) ? 900 : 250;
-    // keep every infantry building busy (each has its own queue)
-    const infBuildings = w.entities.filter((e) => e.alive && e.kind === 'structure' && e.owner === p.id && e.built && INFANTRY_PRODUCERS.has(e.typeId)).length;
-    if (w.queueView(p.id, 'infantry').items.length < Math.max(2, infBuildings + 1) && p.jade > reserve) {
+    if (p.queues.infantry.items.length < 2 && p.jade > reserve) {
       const id = INFANTRY_MIX[S.infIdx % INFANTRY_MIX.length];
       if (w.canBuild(p.id, id)) {
         w.issue(p.id, { t: 'queue', typeId: id });

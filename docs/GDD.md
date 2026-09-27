@@ -15,7 +15,8 @@
    siege engineering, Zhuge Liang's inventions and Daoist elemental arts. Not generic Western
    fantasy with a coat of paint: the architecture, units, names and mechanics come from the setting.
 4. **C&C UX.** Sidebar build frames with cameo portraits and clock-wipe progress, *ready → place*
-   structure flow, power bar, a production queue per building, drag-to-place walls, rally points.
+   structure flow, power bar, one production queue per tab, primary buildings, drag-to-place walls,
+   rally points.
 
 ## 2. Setting & factions
 
@@ -58,11 +59,10 @@ flows to whoever builds, harmonises and holds the land.
 
 * **Sidebar** (right side): radar/minimap on top, Jade counter, **Qi bar** (vertical, C&C style),
   **Mandate gauge** (jade-and-gold ring with tier pips).
-* **Four tabs**: Structures · Defence · Infantry · Machines. Structures and defences: one queue per
-  tab (C&C). Units: **every production building has its own queue** (C&C 3 / StarCraft style) —
-  a second Garrison Camp doubles infantry output and its units walk out of its own doors. A new
-  order goes to the least busy building, or to the selected one; the selection panel shows (and
-  cancels) a building's queue; losing a building refunds what it had in production.
+* **Four tabs**: Structures · Defence · Infantry · Machines. One production queue per tab (RA2);
+  every extra factory of a kind speeds that queue by 50%. New units leave the **primary**
+  building of their kind (gold 主 tag; the oldest by default; double-click or *Set primary* to
+  change it). (A per-building parallel queue was tried and reverted after playtesting.)
 * **Portrait screens**: the sidebar docks along the bottom as a command bar (radar and resources
   left, tabs and a 2–4 column build grid right) so the map keeps the full width.
 * **Cameo build frames** rendered from the actual 3D assets (the viewer has a `cameo=1` mode that

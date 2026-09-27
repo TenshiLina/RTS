@@ -31,11 +31,11 @@ npm run dev          # generates assets, then http://localhost:5173 (game) and /
 2. **Build from the sidebar** — click a cameo to start building (clock-wipe progress). When a
    structure says **READY**, click it again and place it on the grid near your base (green =
    legal; the jade lines preview **Harmony** adjacencies). Right-click a cameo to cancel.
-   **Every production building has its own queue** and they train in parallel: a new order goes
-   to the least busy one, or to the one you have selected. Selecting a Garrison Camp shows its
-   queue (click an icon to cancel it). The count on a cameo is the total queued; "×2" means two
-   buildings are making it at once. Units walk out of their own building to its rally point
-   (select it, right-click the ground to set it).
+   Each tab has one queue (the count on a cameo is how many are queued). **Every extra building
+   of a kind speeds that queue up by half** (two Garrison Camps train infantry ×1.5). New units
+   walk out of the **primary** building of their kind — the gold 主 tag; the first one you built
+   unless you pick another: double-click it, or select it and press *Set primary*. Units head to
+   its rally point (select it, right-click the ground to set it).
 3. **Economy** — the **Jade Refinery** comes with a **Wooden Ox** that harvests Spirit Jade
    fields automatically. Your oxen drive through one another and take turns at the dock, so a
    crowd of them never jams. **Qi Shrines** supply Qi (the vertical bar); in low Qi, production runs
@@ -61,17 +61,21 @@ npm run dev          # generates assets, then http://localhost:5173 (game) and /
 | H · Space | Jump to base · jump to last alert |
 | Wheel · arrows · screen edge | Zoom · scroll · scroll |
 | Middle-drag | Grab the map: the ground under the cursor follows it on both axes |
-| P · M · N | Pause · all sound on/off · music on/off (also the ♪ button in the sidebar) |
+| P · M · N | Pause · mute all sound · next music track (also the ♪ button in the sidebar and the title screen) |
 
 **Touch (phones, tablets):** tap to select; with units selected, tap the ground, jade or an enemy
 to move / harvest / attack; drag to scroll, pinch to zoom; long-press = right-click (cancel a
 build or a targeting mode); the × on the selection panel deselects. In portrait the sidebar
 becomes a command bar along the bottom.
 
-**Music** is generative: guzheng, pipa, dizi and erhu over a sheng drone in D yu-mode pentatonic,
-synthesised in the browser at start-up. It follows the fighting — calm while you build, taiko and
-a ticking clockwork pulse under tension, full drums and an erhu lead in battle
-(`npx tsx tools/render-music.ts out.wav` renders a calm → battle preview offline).
+**Music** is generative and synthesised in the browser at start-up. Four tracks share the Mandate
+theme (a D-minor pentatonic hook) and all follow the fighting — calm while you build, more drive
+under tension, everything in battle:
+*Iron Mandate* (industrial rock in the C&C tradition: drum machine, synth-bass riff, power chords,
+orchestra hits, a steampunk anvil), *Jade Arcade* (chiptune: pulse lead with echo, 4-bit bass,
+noise drums), *Neon Dynasty* (synthwave: supersaw pads, plucked arpeggios, gated snare, guzheng)
+and *Five Elements* (the original guzheng / dizi / erhu / taiko score). N or the ♪ button cycles
+them (and off). `TRACK=0..3 npx tsx tools/render-music.ts out.wav` renders a calm → battle preview.
 
 URL parameters: `?start=easy|normal` skips the title screen, `?gallery=1` opens the Magic
 Gallery, `&time=<s>` fast-forwards.

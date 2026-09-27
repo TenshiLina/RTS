@@ -295,16 +295,12 @@ export function buildSoundLibrary(): Map<string, Float32Array> {
 
   // ---- COMBAT / UI
   {
-    // Karplus-Strong bow twang
-    const n = buf(0.35), r = new Rng(281), period = Math.round(SR / 165);
-    const line = new Float32Array(period).map(() => r.bi());
-    for (let i = 0; i < n.length; i++) {
-      const k = i % period;
-      const v = line[k];
-      line[k] = (v + line[(k + 1) % period]) * 0.5 * 0.994;
-      n[i] = v;
-    }
-    put('arrow', sum(0.35, [n, 0.7], [whoosh(0.3, 282, 3000, 1500, 2, 0.3), 0.3]), 0.5);
+    // a bow shot, unpitched (a plucked-string model read as an instrument): the limbs' dull
+    // thud, the string's slap on the bracer, and the fletching hissing away
+    const thud = shape(lp(noise(0.12, 283), sweep(900, 250, 0.05)), ad(0.001, 0.018));
+    const slap = shape(bp(noise(0.06, 284), 1400, 0.9), ad(0.0005, 0.007));
+    const hiss = shape(bp(noise(0.3, 282), sweep(3200, 1100, 0.22, 0.7), 2.2), (t) => (t < 0.012 ? t / 0.012 : Math.exp(-(t - 0.012) / 0.07)));
+    put('arrow', sum(0.32, [thump(0.1, 150, 80, 0.02), 0.7], [thud, 0.9], [slap, 0.6], [hiss, 0.55, 0.01]), 0.5);
   }
   put('arrow_hit', sum(0.2, [thump(0.12, 220, 120, 0.02), 0.8], [shape(bp(noise(0.2, 291), 900, 2), ad(0.001, 0.03)), 0.6]), 0.45);
   put('melee', reverb(sum(0.4, [ping(0.4, 520, 0.12, 301), 0.6], [shape(hp(noise(0.4, 302), 2000), ad(0.001, 0.02)), 0.9]), 0.3, 0.15), 0.4);

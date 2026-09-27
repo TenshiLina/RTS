@@ -50,6 +50,8 @@ const audio: AudioOutput = {
   },
 };
 const m = new Music(audio);
+m.setTrack(parseInt(process.env.TRACK ?? '0'));
+console.log('track:', m.trackName);
 // the story of a match: peace, a skirmish, a battle, aftermath
 const curve = (t: number) => (t < 30 ? 0 : t < 50 ? 0.45 : t < 78 ? 1 : 0.1);
 for (let t = 0; t < secs; t += 1 / 60) {
