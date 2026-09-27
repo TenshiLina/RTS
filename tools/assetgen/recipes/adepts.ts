@@ -9,10 +9,14 @@ import { MeshBuilder, T } from '../kit/mesh';
 import { PAL } from '../kit/palette';
 import type { Recipe } from '../recipe';
 import type { MaterialDef } from '../../../src/core/materialModel';
-import { J, SKELETON, HAND_R, HAND_L, buildBody, makeAnim, walkCycle, idleCycle, wave, Pose } from './humanoid';
+import { J, SKELETON, SKIN_ZONES, HAND_R, HAND_L, buildBody, makeAnim, walkCycle, idleCycle, wave, Pose, BodyStyle } from './humanoid';
 import type { V2, V3 } from '../../../src/core/math';
 
 type School = 'fire' | 'ice' | 'water' | 'air';
+const smooth01 = (x: number) => {
+  const t = Math.max(0, Math.min(1, x));
+  return t * t * (3 - 2 * t);
+};
 
 const cloth = (name: string, color: number, extra: Partial<MaterialDef> = {}): MaterialDef => ({ ...PAL.clothWhite, name, color, doubleSided: false, ...extra });
 const ICE = { ...PAL.jade, name: 'ice_crystal', color: 0x9ad8ff, emissive: 0.9 };
@@ -24,10 +28,11 @@ function held(mb: MeshBuilder, joint: number, grip: V3, holdDeg: number, fn: () 
 }
 
 /** Robe body shared by all adepts (skirt, bell sleeves, crossed collar). */
-function robeBody(mb: MeshBuilder, robe: MaterialDef, trim: MaterialDef, sleeveLen = 0.3) {
-  buildBody(mb, { trousers: robe, tunic: robe, sleeves: robe, sash: PAL.clothTeam, hair: true });
-  mb.with(T(0, 0, 0, [0, 0, 0], [1, 1, 0.9]), () => mb.lathe([[0.17, 1.02], [0.2, 0.8], [0.27, 0.4], [0.31, 0.08], [0.3, 0.06]], 14), { mat: robe, joint: J.pelvis });
-  mb.with(T(0, 0, 0, [0, 0, 0], [1, 1, 0.9]), () => mb.lathe([[0.31, 0.12], [0.315, 0.06], [0.3, 0.05]], 14), { mat: trim, joint: J.pelvis });
+function robeBody(mb: MeshBuilder, robe: MaterialDef, trim: MaterialDef, sleeveLen = 0.3, look: Partial<BodyStyle> = {}) {
+  buildBody(mb, { trousers: robe, tunic: robe, sleeves: robe, sash: PAL.clothTeam, ...look });
+  // (lathe profiles run bottom → top; the old top → bottom order turned the skirt inside out)
+  mb.with(T(0, 0, 0, [0, 0, 0], [1, 1, 0.9]), () => mb.lathe([[0.3, 0.06], [0.31, 0.08], [0.27, 0.4], [0.215, 0.8], [0.182, 1.02]], 24), { mat: robe, joint: J.pelvis });
+  mb.with(T(0, 0, 0, [0, 0, 0], [1, 1, 0.9]), () => mb.lathe([[0.3, 0.05], [0.315, 0.06], [0.312, 0.12]], 24), { mat: trim, joint: J.pelvis });
   mb.with(null, () => {
     mb.tube([[0.07, 1.46, 0.07], [0.0, 1.3, 0.15], [-0.1, 1.12, 0.14]], 0.024, 4);
     mb.tube([[-0.07, 1.46, 0.07], [-0.02, 1.36, 0.13]], 0.022, 4);
@@ -35,8 +40,8 @@ function robeBody(mb: MeshBuilder, robe: MaterialDef, trim: MaterialDef, sleeveL
   // wide bell sleeves on the forearms
   for (const s of [1, -1]) {
     const x = 0.26 * s;
-    mb.with(null, () => mb.at(x, 0, 0.01, () => mb.lathe([[0.06, 1.15], [0.1, 1.0], [0.15, 1.15 - sleeveLen], [0.14, 1.13 - sleeveLen]], 10)), { mat: robe, joint: s > 0 ? J.foreL : J.foreR });
-    mb.with(null, () => mb.at(x, 0, 0.01, () => mb.lathe([[0.152, 1.16 - sleeveLen], [0.15, 1.13 - sleeveLen], [0.138, 1.13 - sleeveLen]], 10)), { mat: trim, joint: s > 0 ? J.foreL : J.foreR });
+    mb.with(null, () => mb.at(x, 0, 0.01, () => mb.lathe([[0.14, 1.13 - sleeveLen], [0.15, 1.15 - sleeveLen], [0.1, 1.0], [0.065, 1.15]], 16)), { mat: robe, joint: s > 0 ? J.foreL : J.foreR });
+    mb.with(null, () => mb.at(x, 0, 0.01, () => mb.lathe([[0.138, 1.13 - sleeveLen], [0.15, 1.13 - sleeveLen], [0.152, 1.16 - sleeveLen]], 16)), { mat: trim, joint: s > 0 ? J.foreL : J.foreR });
   }
 }
 
@@ -63,7 +68,15 @@ function build(school: School) {
     air: { robe: cloth('robe_air', 0xe4e6da), trim: cloth('trim_air', 0x5f7f6a) },
   };
   const { robe, trim } = styles[school];
-  robeBody(mb, robe, trim, school === 'water' ? 0.24 : 0.3);
+  // faces: a fierce young fire adept, a cool ice adept under the hood, a water adept with hair
+  // loops, and an air adept with Zhuge Liang's goatee
+  const looks: Record<School, Partial<BodyStyle>> = {
+    fire: { face: { brows: 'stern', hair: 'topknot', age: 0.1, shape: { jaw: 1.08, brow: 1.2 } }, handR: 'open', handL: 'relaxed' },
+    ice: { face: { brows: 'calm', hair: 'none', age: 0.4, shape: { width: 0.97, nose: 1.04 } }, handL: 'fist', handR: 'relaxed' },
+    water: { face: { brows: 'arched', hair: 'cropped', age: 0.05, shape: { width: 0.94, jaw: 0.78, nose: 0.84, eyes: 1.1, lips: 1.2, brow: 0.3 } }, handL: 'open', handR: 'open' },
+    air: { face: { brows: 'calm', beard: 'goatee', hair: 'cropped', age: 0.35 }, handR: 'fist', handL: 'relaxed' },
+  };
+  robeBody(mb, robe, trim, school === 'water' ? 0.24 : 0.3, looks[school]);
 
   if (school === 'fire') {
     // gilded flame crown: three flames on a head band
@@ -71,7 +84,7 @@ function build(school: School) {
       mb.at(0, 1.7, 0, () => mb.lathe([[0.128, 0], [0.13, 0.05], [0.125, 0.06]], 12));
       for (const [a, s] of [[0, 1], [-38, 0.72], [38, 0.72]] as [number, number][]) {
         const r = (a * Math.PI) / 180;
-        mb.with(T(Math.sin(r) * 0.12, 1.72, Math.cos(r) * 0.12, [-12, a, 0]), () => mb.with(T(0, 0, 0, [90, 0, 0]), () => mb.extrude(flameShape(0.26 * s, 0.07 * s), -0.012, 0.012)));
+        mb.with(T(Math.sin(r) * 0.12, 1.72, Math.cos(r) * 0.12, [-12, a, 0]), () => mb.with(T(0, 0, 0, [-90, 0, 0]), () => mb.extrude(flameShape(0.26 * s, 0.07 * s), -0.012, 0.012)));
       }
     }, { mat: PAL.gold, joint: J.head });
     mb.with(null, () => mb.at(0, 1.77, 0.135, () => mb.sphere(0.028, 6, 4)), { mat: PAL.fire, joint: J.head });
@@ -81,8 +94,15 @@ function build(school: School) {
     mb.with(null, () => mb.at(HAND_R[0] - 0.01, HAND_R[1] - 0.12, HAND_R[2] + 0.04, () => mb.blob(0.11, 1, { squash: [1, 1.25, 1], displace: (d) => Math.max(0, d[1]) * 0.35 })), { mat: PAL.fire, joint: J.foreR });
   } else if (school === 'ice') {
     // hood + fur mantle
-    mb.with(null, () => mb.at(0, 1.6, -0.01, () => mb.sphere(0.155, 12, 8, { squash: [1, 1.08, 1.05], jitter: (n) => (n[2] > 0.45 && n[1] < 0.6 ? -0.6 : 0) })), { mat: robe, joint: J.head });
-    mb.with(null, () => mb.at(0, 1.62, 0.02, () => mb.lathe([[0.16, -0.02], [0.17, 0.06], [0.16, 0.12]], 12, { arc: Math.PI * 1.25, phase: Math.PI * 0.375 + Math.PI })), { mat: trim, joint: J.head });
+    mb.with(null, () => mb.at(0, 1.6, -0.01, () => mb.blob(0.155, 3, { squash: [1, 1.08, 1.05], displace: (n) => (n[2] > 0.4 && n[1] < 0.6 ? -0.55 * smooth01((n[2] - 0.4) / 0.2) : 0) })), { mat: robe, joint: J.head });
+    mb.with(null, () => {
+      const pts: V3[] = [];
+      for (let i = 0; i <= 24; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        pts.push([Math.sin(a) * 0.095, 1.605 + Math.cos(a) * 0.135, 0.085 - Math.pow(Math.cos(a) * 0.5 + 0.5, 2) * 0.03]);
+      }
+      mb.tube(pts, 0.017, 8, { capStart: false, capEnd: false });
+    }, { mat: trim, joint: J.head });
     mb.with(T(0, 0, 0, [0, 0, 0], [1, 0.6, 0.85]), () => mb.at(0, 2.3, 0, () => mb.lathe([[0.14, 0], [0.26, 0.05], [0.28, 0.12], [0.18, 0.2], [0.1, 0.19]], 12)), { mat: FUR, joint: J.chest });
     // tall staff with an ice-crystal crown, carried in the left hand
     held(mb, J.foreL, HAND_L, -30, () => {
@@ -97,7 +117,14 @@ function build(school: School) {
   } else if (school === 'water') {
     // double hair loops with a pearl, blue ribbons
     mb.with(null, () => {
-      for (const s of [1, -1]) mb.at(0.08 * s, 1.76, -0.03, () => mb.sphere(0.055, 8, 6, { squash: [0.7, 1, 1] }));
+      for (const s of [1, -1]) {
+        const pts: V3[] = [];
+        for (let i = 0; i <= 16; i++) {
+          const a = (i / 16) * Math.PI * 2;
+          pts.push([0.075 * s + Math.sin(a) * 0.012 * s, 1.765 + Math.cos(a) * 0.05, -0.035 + Math.sin(a) * 0.03]);
+        }
+        mb.tube(pts, 0.016, 8, { capStart: false, capEnd: false });
+      }
     }, { mat: PAL.hair, joint: J.head });
     mb.with(null, () => mb.at(0, 1.74, -0.06, () => mb.sphere(0.03, 6, 4)), { mat: { ...PAL.clothWhite, name: 'pearl', color: 0xf5f3ee, roughness: 0.15 }, joint: J.head });
     mb.with(null, () => {
@@ -123,7 +150,8 @@ function build(school: School) {
   } else {
     // scholar's kerchief (纶巾) with two tails
     mb.with(null, () => {
-      mb.at(0, 1.64, -0.01, () => mb.sphere(0.14, 12, 8, { squash: [1, 1.05, 1.02], jitter: (n) => (n[2] > 0.5 && n[1] < 0.5 ? -0.55 : 0) }));
+      // (blob, not a jittered sphere: jitter turns off smooth normals and the cloth looked faceted)
+      mb.at(0, 1.64, -0.01, () => mb.blob(0.14, 3, { squash: [1, 1.05, 1.02], displace: (n) => (n[2] > 0.45 && n[1] < 0.5 ? -0.5 * smooth01((n[2] - 0.45) / 0.2) : 0) }));
       mb.box([0.2, 0.12, 0.17], [0, 1.78, -0.01], 0.03);
       for (const s of [1, -1]) mb.tube([[0.05 * s, 1.72, -0.12], [0.08 * s, 1.55, -0.2], [0.06 * s, 1.38, -0.22]], 0.014, 4, { squash: [2.4, 0.5] });
     }, { mat: trim, joint: J.head });
@@ -197,7 +225,7 @@ function build(school: School) {
     makeAnim('cast', 0.9, cast, b),
   ];
   const hand = school === 'ice' ? HAND_L : HAND_R;
-  return { mesh: mb, skeleton: SKELETON, animations: anims, sockets: [{ name: 'cast', pos: [hand[0], 1.3, 0.35] as V3, joint: school === 'ice' ? 'foreL' : 'foreR' }], ao: { maxDist: 0.6 } };
+  return { mesh: mb, skeleton: SKELETON, skin: SKIN_ZONES, animations: anims, sockets: [{ name: 'cast', pos: [hand[0], 1.3, 0.35] as V3, joint: school === 'ice' ? 'foreL' : 'foreR' }], ao: { maxDist: 0.6 } };
 }
 
 const recipe = (school: School, name: string, hanzi: string): Recipe => ({ id: `azure_${school}_adept`, name, hanzi, category: 'unit', build: () => build(school) });

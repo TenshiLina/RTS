@@ -4,8 +4,9 @@
 
 import { V3, Quat, M4, m4FromTRS } from '../core/math';
 
-export const MESH_VERTEX_STRIDE = 48;
-// layout: pos f32x3 @0, normal f32x3 @12, uv f32x2 @24, color u8x4 @32, mat u8x4 @36, extra u8x4 @40, joints u8x4 @44
+export const MESH_VERTEX_STRIDE = 52;
+// layout: pos f32x3 @0, normal f32x3 @12, uv f32x2 @24, color u8x4 @32, mat u8x4 @36, extra u8x4 @40,
+// joints u8x4 @44, weights unorm8x4 @48 (linear-blend skinning, up to four joints per vertex)
 
 export interface JointData {
   name: string;
@@ -122,6 +123,7 @@ export function parseGLB(buf: ArrayBuffer, name = 'model'): ModelData {
     const UV = at.TEXCOORD_0 !== undefined ? readAccessor(at.TEXCOORD_0) : null;
     const C = at.COLOR_0 !== undefined ? readAccessor(at.COLOR_0) : null;
     const J = at.JOINTS_0 !== undefined ? readAccessor(at.JOINTS_0) : null;
+    const Wt = at.WEIGHTS_0 !== undefined ? readAccessor(at.WEIGHTS_0) : null;
     const S = at._SWAY !== undefined ? readAccessor(at._SWAY) : null;
     const count = P.count;
     const matOf = new Int32Array(count).fill(-1);
@@ -173,10 +175,15 @@ export function parseGLB(buf: ArrayBuffer, name = 'model'): ModelData {
           dst.setUint8(o + 41, u8(Math.min(1, (S ? S.data[i] : 0) + m.sway)));
           dst.setUint8(o + 42, 0);
           dst.setUint8(o + 43, 0);
-          dst.setUint8(o + 44, J ? J.data[i * 4] : 0);
-          dst.setUint8(o + 45, 0);
-          dst.setUint8(o + 46, 0);
-          dst.setUint8(o + 47, 0);
+          // weights quantised to bytes that still sum to 255 (the largest takes the rounding)
+          const w = Wt ? [Wt.data[i * 4], Wt.data[i * 4 + 1], Wt.data[i * 4 + 2], Wt.data[i * 4 + 3]] : [1, 0, 0, 0];
+          const wb = w.map((x) => Math.round(Math.max(0, x) * 255));
+          const big = wb.indexOf(Math.max(...wb));
+          wb[big] += 255 - wb.reduce((a, b2) => a + b2, 0);
+          for (let k = 0; k < 4; k++) {
+            dst.setUint8(o + 44 + k, J && wb[k] > 0 ? J.data[i * 4 + k] : 0);
+            dst.setUint8(o + 48 + k, Math.max(0, wb[k]));
+          }
         }
       },
     });

@@ -3,7 +3,7 @@
 import { MeshBuilder, T } from '../kit/mesh';
 import { PAL } from '../kit/palette';
 import type { Recipe } from '../recipe';
-import { J, SKELETON, HAND_R, HAND_L, buildBody, armourSkirt, makeAnim, walkCycle, idleCycle, wave, Pose } from './humanoid';
+import { J, SKELETON, SKIN_ZONES, HAND_R, HAND_L, buildBody, armourSkirt, makeAnim, walkCycle, idleCycle, wave, Pose } from './humanoid';
 import { V3, quatAxisAngle } from '../../../src/core/math';
 import type { JointDef } from '../kit/gltf';
 
@@ -14,20 +14,20 @@ function held(mb: MeshBuilder, joint: number, grip: V3, holdDeg: number, fn: () 
 
 function helmet(mb: MeshBuilder) {
   mb.with(null, () => {
-    mb.at(0, 1.62, 0.0, () => {
-      mb.lathe([[0.155, -0.04], [0.15, 0.02], [0.14, 0.08], [0.1, 0.15], [0.03, 0.19], [0.001, 0.2]], 12, { capBottom: false });
+    mb.at(0, 1.672, -0.006, () => {
+      mb.lathe([[0.155, -0.04], [0.15, 0.02], [0.14, 0.08], [0.1, 0.15], [0.03, 0.19], [0.001, 0.2]], 28, { capBottom: false });
       // brim
-      mb.lathe([[0.14, 0.0], [0.17, -0.02], [0.165, -0.035], [0.14, -0.02]], 12);
+      mb.lathe([[0.14, 0.0], [0.17, -0.02], [0.165, -0.035], [0.14, -0.02]], 28);
       // spike
       mb.cylinder({ r: 0.02, rTop: 0.005, h: 0.14, y0: 0.19, sides: 6 });
     });
   }, { mat: PAL.steel, joint: J.head });
   // neck guard (aventail) — back half only
   mb.with(null, () => {
-    mb.at(0, 1.6, 0, () => mb.lathe([[0.15, 0], [0.19, -0.14]], 10, { arc: Math.PI * 1.1, phase: Math.PI * 0.45, smooth: false }));
+    mb.at(0, 1.652, -0.006, () => mb.lathe([[0.19, -0.14], [0.15, 0]], 10, { arc: Math.PI * 1.1, phase: Math.PI * 0.45, smooth: false }));
   }, { mat: PAL.lamellarTeam, joint: J.head });
   // red horsehair tassel
-  mb.with(null, () => mb.at(0, 1.83, 0, () => mb.blob(0.055, 1, { squash: [1, 0.9, 1], displace: (d) => Math.max(0, -d[1]) * 0.5 })), { mat: PAL.clothRed, joint: J.head });
+  mb.with(null, () => mb.at(0, 1.88, -0.006, () => mb.blob(0.055, 1, { squash: [1, 0.9, 1], displace: (d) => Math.max(0, -d[1]) * 0.5 })), { mat: PAL.clothRed, joint: J.head });
 }
 
 function lamellarCuirass(mb: MeshBuilder) {
@@ -56,7 +56,7 @@ export const halberdier: Recipe = {
   category: 'unit',
   build() {
     const mb = new MeshBuilder('azure_halberdier');
-    buildBody(mb, { trousers: PAL.clothIndigo, tunic: PAL.clothRed, sleeves: PAL.clothRed, hair: true });
+    buildBody(mb, { trousers: PAL.clothIndigo, tunic: PAL.clothRed, sleeves: PAL.clothRed, collar: PAL.clothBlack, face: { brows: 'stern', beard: 'moustache', hair: 'cropped', age: 0.35, shape: { width: 1.06, jaw: 1.2, nose: 1.08, brow: 1.3 } }, handL: 'fist', handR: 'fist' });
     lamellarCuirass(mb);
     armourSkirt(mb, PAL.lamellarTeam, 0.36);
     helmet(mb);
@@ -112,7 +112,7 @@ export const halberdier: Recipe = {
         };
       }, halberdBase),
     ];
-    return { mesh: mb, skeleton: SKELETON, animations: anims, sockets: [{ name: 'weapon_tip', pos: [HAND_R[0], HAND_R[1] + 1.9, HAND_R[2]], joint: 'foreR' }], ao: { maxDist: 0.6, ground: true } };
+    return { mesh: mb, skeleton: SKELETON, skin: SKIN_ZONES, animations: anims, sockets: [{ name: 'weapon_tip', pos: [HAND_R[0], HAND_R[1] + 1.9, HAND_R[2]], joint: 'foreR' }], ao: { maxDist: 0.6, ground: true } };
   },
 };
 
@@ -127,7 +127,7 @@ export const archer: Recipe = {
   category: 'unit',
   build() {
     const mb = new MeshBuilder('azure_archer');
-    buildBody(mb, { trousers: PAL.clothBrown, tunic: PAL.clothOlive, sleeves: PAL.clothOlive, sash: PAL.clothTeam, hair: true });
+    buildBody(mb, { trousers: PAL.clothBrown, tunic: PAL.clothOlive, sleeves: PAL.clothOlive, sash: PAL.clothTeam, collar: PAL.clothBrown, face: { brows: 'calm', hair: 'low', age: 0.15, shape: { width: 0.96, jaw: 0.92, eyes: 1.04 } }, handL: 'fist', handR: 'relaxed' });
     // padded vest in team colour
     mb.with(T(0, 0, 0, [0, 0, 0], [1, 1, 0.8]), () => mb.lathe([[0.17, 1.06], [0.2, 1.3], [0.195, 1.38], [0.13, 1.44]], 12), { mat: { ...PAL.clothTeam, name: 'vest_team', team: 0.85, doubleSided: false }, joint: J.chest });
     armourSkirt(mb, PAL.clothOlive, 0.3);
@@ -136,9 +136,8 @@ export const archer: Recipe = {
       mb.at(0, 1.68, 0, () => mb.lathe([[0.36, 0], [0.3, 0.03], [0.12, 0.12], [0.001, 0.19]], 16, { capBottom: true, smooth: false }));
     }, { mat: PAL.straw, joint: J.head });
     mb.with(null, () => mb.at(0, 1.705, 0, () => mb.cylinder({ r: 0.305, rTop: 0.29, h: 0.035, sides: 16, capTop: false, capBottom: false })), { mat: { ...PAL.clothTeam, name: 'hat_band', doubleSided: false }, joint: J.head });
-    mb.with(null, () => mb.at(0, 1.55, -0.1, () => mb.sphere(0.06, 8, 6)), { mat: PAL.hair, joint: J.head });
     // chin strap
-    mb.with(null, () => mb.tube([[0.11, 1.68, 0.02], [0.08, 1.52, 0.06], [0, 1.49, 0.09], [-0.08, 1.52, 0.06], [-0.11, 1.68, 0.02]], 0.008, 4), { mat: PAL.leather, joint: J.head });
+    mb.with(null, () => mb.tube([[0.108, 1.69, -0.01], [0.1, 1.58, -0.005], [0.075, 1.505, 0.025], [0, 1.47, 0.06], [-0.075, 1.505, 0.025], [-0.1, 1.58, -0.005], [-0.108, 1.69, -0.01]], 0.006, 5), { mat: PAL.leather, joint: J.head });
     // quiver on the back
     mb.with(T(0.08, 1.2, -0.17, [0, 0, -18]), () => {
       mb.with(null, () => mb.cylinder({ r: 0.07, h: 0.5, y0: -0.2, sides: 8 }), { mat: PAL.leather });
@@ -182,7 +181,7 @@ export const archer: Recipe = {
         };
       }, archerBase),
     ];
-    return { mesh: mb, skeleton: SKELETON, animations: anims, sockets: [{ name: 'muzzle', pos: [HAND_L[0], 1.35, 0.4], joint: 'foreL' }], ao: { maxDist: 0.6 } };
+    return { mesh: mb, skeleton: SKELETON, skin: SKIN_ZONES, animations: anims, sockets: [{ name: 'muzzle', pos: [HAND_L[0], 1.35, 0.4], joint: 'foreL' }], ao: { maxDist: 0.6 } };
   },
 };
 
@@ -199,12 +198,12 @@ export const daoist: Recipe = {
     const mb = new MeshBuilder('azure_daoist');
     const robe = { ...PAL.clothWhite, name: 'robe_daoist', color: 0x6f86a8, doubleSided: false };
     const robeEdge = PAL.clothBlack;
-    buildBody(mb, { trousers: robe, tunic: robe, sleeves: robe, sash: PAL.clothTeam, hair: true });
+    buildBody(mb, { trousers: robe, tunic: robe, sleeves: robe, sash: PAL.clothTeam, face: { brows: 'calm', beard: 'long', hair: 'cropped', age: 0.55, shape: { width: 0.95, jaw: 0.9, nose: 1.06 } }, handL: 'relaxed', handR: 'fist' });
     // long flowing robe skirt (on pelvis)
     mb.with(T(0, 0, 0, [0, 0, 0], [1, 1, 0.9]), () => {
-      mb.lathe([[0.17, 1.02], [0.2, 0.8], [0.26, 0.4], [0.3, 0.08], [0.29, 0.06]], 14);
+      mb.lathe([[0.29, 0.06], [0.3, 0.08], [0.26, 0.4], [0.215, 0.8], [0.182, 1.02]], 24);
     }, { mat: robe, joint: J.pelvis });
-    mb.with(T(0, 0, 0, [0, 0, 0], [1, 1, 0.9]), () => mb.lathe([[0.3, 0.1], [0.305, 0.06], [0.29, 0.05]], 14), { mat: robeEdge, joint: J.pelvis });
+    mb.with(T(0, 0, 0, [0, 0, 0], [1, 1, 0.9]), () => mb.lathe([[0.29, 0.05], [0.305, 0.06], [0.302, 0.1]], 24), { mat: robeEdge, joint: J.pelvis });
     // crossed collar (交领)
     mb.with(null, () => {
       mb.tube([[0.07, 1.46, 0.07], [0.0, 1.3, 0.15], [-0.1, 1.12, 0.14]], 0.022, 4);
@@ -212,7 +211,7 @@ export const daoist: Recipe = {
     }, { mat: robeEdge, joint: J.chest });
     // wide bell sleeves
     for (const s of [1, -1]) {
-      mb.with(null, () => mb.lathe([[0.06, 1.15], [0.1, 1.0], [0.14, 0.86], [0.13, 0.84]].map(([r, y]) => [r, y] as [number, number]), 10, { smooth: true }), { mat: robe, joint: s > 0 ? J.foreL : J.foreR });
+      mb.with(null, () => mb.lathe([[0.13, 0.84], [0.14, 0.86], [0.1, 1.0], [0.065, 1.15]], 16, { smooth: true }), { mat: robe, joint: s > 0 ? J.foreL : J.foreR });
     }
     // shift sleeves onto the forearm axis
     for (const t of mb.tris) {
@@ -228,8 +227,6 @@ export const daoist: Recipe = {
       mb.box([0.2, 0.05, 0.16], [0, 1.865, -0.01], 0.015);
     }, { mat: PAL.clothBlack, joint: J.head });
     mb.with(null, () => mb.at(0, 1.8, -0.01, () => mb.cylinder({ r: 0.011, h: 0.3, y0: -0.15, sides: 5 }), [0, 0, 90]), { mat: PAL.jade, joint: J.head });
-    // wispy beard
-    mb.with(null, () => mb.at(0, 1.5, 0.1, () => mb.cone(0.035, 0.16, 5, 0), [180, 0, 0]), { mat: PAL.hair, joint: J.head });
     // peach-wood sword on the back
     mb.with(T(-0.05, 1.2, -0.2, [0, 0, 35]), () => {
       mb.with(null, () => mb.box([0.05, 0.62, 0.015], [0, 0.2, 0], 0.005), { mat: { ...PAL.timber, name: 'peachwood', color: 0xa0603a } });
@@ -244,7 +241,7 @@ export const daoist: Recipe = {
       mb.with(T(Math.sin(a) * 0.55, 1.15 + (i - 1) * 0.12, Math.cos(a) * 0.55, [0, (a * 180) / Math.PI + 90, 8]), () => {
         mb.with(null, () => mb.box([0.09, 0.2, 0.004], [0, 0, 0]), { mat: PAL.talisman });
         mb.with(null, () => mb.box([0.02, 0.12, 0.006], [0, 0, 0]), { mat: PAL.clothRed });
-      }, { joint: 12 });
+      }, { joint: SKELETON.length });
     }
 
     const orbit = (p: number) => ({ r: quatAxisAngle([0, 1, 0], p * Math.PI * 2), t: [0, Math.sin(p * Math.PI * 4) * 0.05, 0] as V3 });
@@ -267,6 +264,6 @@ export const daoist: Recipe = {
         };
       }, daoistBase), 1.5),
     ];
-    return { mesh: mb, skeleton: daoistSkeleton, animations: anims, sockets: [{ name: 'cast', pos: [HAND_R[0], 1.3, 0.35], joint: 'foreR' }], ao: { maxDist: 0.6 } };
+    return { mesh: mb, skeleton: daoistSkeleton, skin: SKIN_ZONES, animations: anims, sockets: [{ name: 'cast', pos: [HAND_R[0], 1.3, 0.35], joint: 'foreR' }], ao: { maxDist: 0.6 } };
   },
 };

@@ -16,6 +16,14 @@ export interface Tri {
   joint: number;
   sway: [number, number, number];
   tint: V3;
+  /** deformable surface (skin, cloth): gets blended joint weights from the skinning pass */
+  soft?: boolean;
+  /** per-vertex joints/weights (set by kit/skin.ts); absent = rigidly bound to `joint` */
+  skin?: [Skin, Skin, Skin];
+}
+export interface Skin {
+  j: [number, number, number, number];
+  w: [number, number, number, number];
 }
 
 export const T = (x: number, y: number, z: number, rotDeg: V3 = [0, 0, 0], s: V3 | number = 1): M4 =>
@@ -59,6 +67,7 @@ export class MeshBuilder {
   joint = 0;
   sway = 0;
   tint: V3 = [1, 1, 1];
+  soft = false;
 
   constructor(public name = 'mesh') {}
 
@@ -89,19 +98,21 @@ export class MeshBuilder {
     this.cur = this.stack.pop()!;
   }
   /** Run `fn` with an extra local transform (and optionally a material / joint). */
-  with(m: M4 | null, fn: () => void, opts: { mat?: MaterialDef | string; joint?: number; sway?: number; tint?: V3 } = {}) {
-    const saved = { mat: this.curMat, joint: this.joint, sway: this.sway, tint: this.tint };
+  with(m: M4 | null, fn: () => void, opts: { mat?: MaterialDef | string; joint?: number; sway?: number; tint?: V3; soft?: boolean } = {}) {
+    const saved = { mat: this.curMat, joint: this.joint, sway: this.sway, tint: this.tint, soft: this.soft };
     if (m) this.push(m);
     if (opts.mat) this.mat(opts.mat);
     if (opts.joint !== undefined) this.joint = opts.joint;
     if (opts.sway !== undefined) this.sway = opts.sway;
     if (opts.tint) this.tint = opts.tint;
+    if (opts.soft !== undefined) this.soft = opts.soft;
     fn();
     if (m) this.pop();
     this.curMat = saved.mat;
     this.joint = saved.joint;
     this.sway = saved.sway;
     this.tint = saved.tint;
+    this.soft = saved.soft;
   }
   at(x: number, y: number, z: number, fn: () => void, rotDeg: V3 = [0, 0, 0], s: V3 | number = 1) {
     this.with(T(x, y, z, rotDeg, s), fn);
@@ -143,7 +154,7 @@ export class MeshBuilder {
     }
     // guard degenerate triangles
     if (len(cross(sub(b, a), sub(c, a))) < 1e-10) return;
-    this.tris.push({ p: [a, b, c], n: ns, uv: uvs, mat: this.curMat, joint: this.joint, sway: sw, tint: this.tint });
+    this.tris.push({ p: [a, b, c], n: ns, uv: uvs, mat: this.curMat, joint: this.joint, sway: sw, tint: this.tint, soft: this.soft || undefined });
   }
   quad(p0: V3, p1: V3, p2: V3, p3: V3, uv?: [V2, V2, V2, V2], n?: [V3, V3, V3, V3]) {
     this.tri(p0, p1, p2, uv && [uv[0], uv[1], uv[2]], n && [n[0], n[1], n[2]]);
@@ -461,10 +472,12 @@ export class MeshBuilder {
     });
     for (const t of other.tris) {
       this.curMat = remap[t.mat];
-      const saved = this.joint;
+      const saved = this.joint, savedSoft = this.soft;
       this.joint = t.joint;
+      this.soft = !!t.soft;
       this.tri(t.p[0], t.p[1], t.p[2], t.uv, t.n, t.sway);
       this.joint = saved;
+      this.soft = savedSoft;
     }
   }
 

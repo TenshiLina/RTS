@@ -9,6 +9,7 @@ import { exportGLB } from './kit/gltf';
 import { bakeAO } from './kit/ao';
 import { findZFighting } from './kit/zfight';
 import { RECIPES } from './recipes';
+import { applySkinWeights } from './kit/skin';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const outDir = join(root, 'public', 'assets', 'models');
@@ -42,6 +43,7 @@ for (const r of RECIPES) {
     const worst = zf.sort((a, b) => b.area - a.area).slice(0, 4);
     console.warn(`  ⚠ ${r.id}: ${zf.length} coplanar overlaps (z-fighting), e.g. ` + worst.map((z) => `${z.mats.join('/')} @ ${z.at.map((v) => v.toFixed(2)).join(',')} (${z.area.toFixed(3)} m²)`).join('; '));
   }
+  if (res.skin && res.skeleton) applySkinWeights(res.mesh.tris, res.skeleton, res.skin);
   const ao = res.ao === false ? undefined : bakeAO(res.mesh.tris, res.ao ?? {});
   const glb = exportGLB(res.mesh, { ao, skeleton: res.skeleton, animations: res.animations, sockets: res.sockets, extras: { ...res.extras, footprint: r.footprint, category: r.category } });
   writeFileSync(join(outDir, entry.file), glb);

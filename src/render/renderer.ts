@@ -161,6 +161,7 @@ export const MESH_VERTEX_LAYOUT: VertexBufferLayout = {
     { location: 4, format: 'unorm8x4', offset: 36 },
     { location: 5, format: 'unorm8x4', offset: 40 },
     { location: 6, format: 'uint8x4', offset: 44 },
+    { location: 7, format: 'unorm8x4', offset: 48 },
   ],
 };
 const INSTANCE_LAYOUT: VertexBufferLayout = {

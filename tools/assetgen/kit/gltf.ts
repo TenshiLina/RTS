@@ -100,13 +100,15 @@ export function exportGLB(mb: MeshBuilder, opts: ExportOptions = {}): Uint8Array
 
   // ---- deduplicate vertices
   const vmap = new Map<string, number>();
-  const P: number[] = [], N: number[] = [], UV: number[] = [], C: number[] = [], J: number[] = [], S: number[] = [];
+  const P: number[] = [], N: number[] = [], UV: number[] = [], C: number[] = [], J: number[] = [], W: number[] = [], S: number[] = [];
   const perMat: number[][] = mb.materials.map(() => []);
   tris.forEach((t, ti) => {
     for (let k = 0; k < 3; k++) {
       const p = t.p[k], n = t.n[k], uv = t.uv[k];
       const a = aoAll ? aoAll[ti * 3 + k] : 1;
-      const key = [p[0].toFixed(4), p[1].toFixed(4), p[2].toFixed(4), n[0].toFixed(3), n[1].toFixed(3), n[2].toFixed(3), uv[0].toFixed(3), uv[1].toFixed(3), t.mat, t.joint, t.sway[k].toFixed(2), a.toFixed(2), t.tint.join(',')].join('|');
+      const sk = t.skin?.[k];
+      const skinKey = sk ? sk.j.join(',') + ':' + sk.w.map((w) => w.toFixed(3)).join(',') : '';
+      const key = [p[0].toFixed(4), p[1].toFixed(4), p[2].toFixed(4), n[0].toFixed(3), n[1].toFixed(3), n[2].toFixed(3), uv[0].toFixed(3), uv[1].toFixed(3), t.mat, t.joint, skinKey, t.sway[k].toFixed(2), a.toFixed(2), t.tint.join(',')].join('|');
       let idx = vmap.get(key);
       if (idx === undefined) {
         idx = P.length / 3;
@@ -120,7 +122,13 @@ export function exportGLB(mb: MeshBuilder, opts: ExportOptions = {}): Uint8Array
           Math.round(Math.min(1, t.tint[2] * a) * 255),
           Math.round(a * 255),
         );
-        J.push(t.joint, 0, 0, 0);
+        if (sk) {
+          J.push(...sk.j);
+          W.push(...sk.w);
+        } else {
+          J.push(t.joint, 0, 0, 0);
+          W.push(1, 0, 0, 0);
+        }
         S.push(t.sway[k]);
       }
       perMat[t.mat].push(idx);
@@ -142,9 +150,7 @@ export function exportGLB(mb: MeshBuilder, opts: ExportOptions = {}): Uint8Array
   if (hasSway) attr._SWAY = bin.accessor({ bufferView: bin.add(new Float32Array(S), ARRAY_BUFFER), componentType: FLOAT, count: vcount, type: 'SCALAR' });
   if (skinned) {
     attr.JOINTS_0 = bin.accessor({ bufferView: bin.add(new Uint8Array(J), ARRAY_BUFFER), componentType: UBYTE, count: vcount, type: 'VEC4' });
-    const W = new Float32Array(vcount * 4);
-    for (let i = 0; i < vcount; i++) W[i * 4] = 1;
-    attr.WEIGHTS_0 = bin.accessor({ bufferView: bin.add(W, ARRAY_BUFFER), componentType: FLOAT, count: vcount, type: 'VEC4' });
+    attr.WEIGHTS_0 = bin.accessor({ bufferView: bin.add(new Float32Array(W), ARRAY_BUFFER), componentType: FLOAT, count: vcount, type: 'VEC4' });
   }
 
   const big = vcount > 65535;

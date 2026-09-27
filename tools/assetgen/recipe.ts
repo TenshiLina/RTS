@@ -1,6 +1,7 @@
 import type { MeshBuilder } from './kit/mesh';
 import type { AnimDef, JointDef, SocketDef } from './kit/gltf';
 import type { AOOptions } from './kit/ao';
+import type { BlendZone } from './kit/skin';
 
 export type AssetCategory = 'structure' | 'unit' | 'environment' | 'resource';
 
@@ -10,6 +11,8 @@ export interface AssetResult {
   animations?: AnimDef[];
   sockets?: SocketDef[];
   ao?: AOOptions | false;
+  /** blend zones per joint name: soft geometry gets smooth multi-joint skin weights */
+  skin?: Record<string, BlendZone>;
   extras?: Record<string, unknown>;
 }
 
