@@ -21,9 +21,9 @@ export interface SkinTone {
 }
 export const SKIN_TONES: Record<string, SkinTone> = {
   warm: { base: 0xe2b28c, flush: 0xd68a72, lips: 0xb45f55, brow: 0x241a15 },
-  tan: { base: 0xc9936a, flush: 0xbd6f55, lips: 0x9c5046, brow: 0x1e1612 },
+  tan: { base: 0xcf9f7c, flush: 0xc07a66, lips: 0xa45a52, brow: 0x1e1612 },
   fair: { base: 0xeec3a2, flush: 0xe29a86, lips: 0xc46e66, brow: 0x2b211b },
-  weathered: { base: 0xc08a64, flush: 0xb36850, lips: 0x96534a, brow: 0x2a2320 },
+  weathered: { base: 0xc3906e, flush: 0xb46e5e, lips: 0x98564e, brow: 0x241d1a },
 };
 
 const mix3 = (a: V3, b: V3, t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];

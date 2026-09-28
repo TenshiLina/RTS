@@ -18,6 +18,12 @@ export interface Tri {
   tint: V3;
   /** deformable surface (skin, cloth): gets blended joint weights from the skinning pass */
   soft?: boolean;
+  /**
+   * how the skinning pass picks joints for a soft triangle: 'auto' = per vertex, the nearest
+   * bone (sculpted parts spanning several bones); 'skirt' = pelvis blended into both thighs
+   * towards the hem (robes, armour skirts). Default: the triangle's own joint.
+   */
+  skinMode?: 'auto' | 'skirt';
   /** per-vertex joints/weights (set by kit/skin.ts); absent = rigidly bound to `joint` */
   skin?: [Skin, Skin, Skin];
   /** the primitive this triangle came from (one call to box/tube/surface/mesh/…) */
@@ -79,6 +85,7 @@ export class MeshBuilder {
   sway = 0;
   tint: V3 = [1, 1, 1];
   soft = false;
+  skinMode: 'auto' | 'skirt' | undefined = undefined;
   /** current primitive id (see Tri.piece) */
   piece = 0;
   private pieces = 0;
@@ -112,14 +119,18 @@ export class MeshBuilder {
     this.cur = this.stack.pop()!;
   }
   /** Run `fn` with an extra local transform (and optionally a material / joint). */
-  with(m: M4 | null, fn: () => void, opts: { mat?: MaterialDef | string; joint?: number; sway?: number; tint?: V3; soft?: boolean } = {}) {
-    const saved = { mat: this.curMat, joint: this.joint, sway: this.sway, tint: this.tint, soft: this.soft };
+  with(m: M4 | null, fn: () => void, opts: { mat?: MaterialDef | string; joint?: number; sway?: number; tint?: V3; soft?: boolean; skinMode?: 'auto' | 'skirt' } = {}) {
+    const saved = { mat: this.curMat, joint: this.joint, sway: this.sway, tint: this.tint, soft: this.soft, skinMode: this.skinMode };
     if (m) this.push(m);
     if (opts.mat) this.mat(opts.mat);
     if (opts.joint !== undefined) this.joint = opts.joint;
     if (opts.sway !== undefined) this.sway = opts.sway;
     if (opts.tint) this.tint = opts.tint;
     if (opts.soft !== undefined) this.soft = opts.soft;
+    if (opts.skinMode !== undefined) {
+      this.skinMode = opts.skinMode;
+      this.soft = true;
+    }
     fn();
     if (m) this.pop();
     this.curMat = saved.mat;
@@ -127,6 +138,7 @@ export class MeshBuilder {
     this.sway = saved.sway;
     this.tint = saved.tint;
     this.soft = saved.soft;
+    this.skinMode = saved.skinMode;
   }
   at(x: number, y: number, z: number, fn: () => void, rotDeg: V3 = [0, 0, 0], s: V3 | number = 1) {
     this.with(T(x, y, z, rotDeg, s), fn);
@@ -184,7 +196,7 @@ export class MeshBuilder {
     }
     // guard degenerate triangles
     if (len(cross(sub(b, a), sub(c, a))) < 1e-10) return;
-    this.tris.push({ p: [a, b, c], n: ns, uv: uvs, mat: this.curMat, joint: this.joint, sway: sw, tint: this.tint, soft: this.soft || undefined, piece: this.piece || undefined, pp, ct });
+    this.tris.push({ p: [a, b, c], n: ns, uv: uvs, mat: this.curMat, joint: this.joint, sway: sw, tint: this.tint, soft: this.soft || undefined, skinMode: this.soft ? this.skinMode : undefined, piece: this.piece || undefined, pp, ct });
   }
   quad(p0: V3, p1: V3, p2: V3, p3: V3, uv?: [V2, V2, V2, V2], n?: [V3, V3, V3, V3], ex?: VX) {
     const e = (i: number, j: number, k: number): VX | undefined => ex && { pp: [ex.pp[i], ex.pp[j], ex.pp[k]], ct: [ex.ct[i], ex.ct[j], ex.ct[k]] };
@@ -563,9 +575,10 @@ export class MeshBuilder {
     const savedPiece = this.piece;
     for (const t of other.tris) {
       this.curMat = remap[t.mat];
-      const saved = this.joint, savedSoft = this.soft;
+      const saved = this.joint, savedSoft = this.soft, savedMode = this.skinMode;
       this.joint = t.joint;
       this.soft = !!t.soft;
+      this.skinMode = t.skinMode;
       if (t.piece) {
         let pc = pieceMap.get(t.piece);
         if (pc === undefined) pieceMap.set(t.piece, (pc = this.beginPiece()));
@@ -574,6 +587,7 @@ export class MeshBuilder {
       this.tri(t.p[0], t.p[1], t.p[2], t.uv, t.n, t.sway, t.pp && t.ct ? { pp: t.pp, ct: t.ct } : undefined);
       this.joint = saved;
       this.soft = savedSoft;
+      this.skinMode = savedMode;
     }
     this.piece = savedPiece;
   }

@@ -11,6 +11,10 @@ import { workshop } from './workshop';
 import { academy } from './academy';
 import { fireAdept, iceAdept, waterAdept, airAdept } from './adepts';
 import { devHeads } from './dev';
+import { devBody } from './devBody';
+import { devFace } from './devFace';
+import { devSeam } from './devSeam';
+import { devHalberd3 } from './devHalberd3';
 import { pine, bamboo, peachTree, rock, scholarRock, jadeSmall, jadeLarge } from './environment';
 
 export const RECIPES: Recipe[] = [
@@ -23,5 +27,5 @@ export const RECIPES: Recipe[] = [
   // environment
   pine, bamboo, peachTree, rock, scholarRock,
   // viewer-only previews
-  devHeads,
+  devHeads, devBody, devFace, devSeam, devHalberd3,
 ];

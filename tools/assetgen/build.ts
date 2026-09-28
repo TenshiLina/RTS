@@ -54,7 +54,7 @@ for (const r of RECIPES) {
     const worst = zf.sort((a, b) => b.area - a.area).slice(0, 4);
     console.warn(`  ⚠ ${r.id}: ${zf.length} coplanar overlaps (z-fighting), e.g. ` + worst.map((z) => `${z.mats.join('/')} @ ${z.at.map((v) => v.toFixed(2)).join(',')} (${z.area.toFixed(3)} m²)`).join('; '));
   }
-  if (res.skin && res.skeleton) applySkinWeights(res.mesh.tris, res.skeleton, res.skin);
+  if (res.skin && res.skeleton) applySkinWeights(res.mesh.tris, res.skeleton, res.skin, { owner: res.skinOwner });
   const ao = res.ao === false ? undefined : bakeAO(res.mesh.tris, res.ao ?? {});
   // painted materials: unwrap, pack and paint a texture atlas
   let atlas: { albedo: Uint8Array; surface: Uint8Array; mime: string } | undefined;

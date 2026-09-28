@@ -13,7 +13,11 @@ export interface IndexedMesh {
   idx: Uint32Array; // three per triangle, CCW = outward
 }
 
-export function surfaceNets(f: SDF, min: V3, max: V3, h: number): IndexedMesh {
+/**
+ * `slack` widens the test that skips empty blocks: fields that are steeper than a true distance
+ * (displaced sculpts) need it, or thin features can fall between tested block centres.
+ */
+export function surfaceNets(f: SDF, min: V3, max: V3, h: number, slack = 1.35): IndexedMesh {
   const nx = Math.max(1, Math.ceil((max[0] - min[0]) / h));
   const ny = Math.max(1, Math.ceil((max[1] - min[1]) / h));
   const nz = Math.max(1, Math.ceil((max[2] - min[2]) / h));
@@ -37,7 +41,7 @@ export function surfaceNets(f: SDF, min: V3, max: V3, h: number): IndexedMesh {
   const active: number[] = [];
   for (let k = 0; k < bz; k++) for (let j = 0; j < by; j++) for (let i = 0; i < bx; i++) {
     const cx = ox + (i + 0.5) * B * h, cy = oy + (j + 0.5) * B * h, cz = oz + (k + 0.5) * B * h;
-    if (Math.abs(f(cx, cy, cz)) < half * 1.35 + h) active.push(i, j, k);
+    if (Math.abs(f(cx, cy, cz)) < half * slack + h) active.push(i, j, k);
   }
 
   // ---- one vertex per sign-changing cell

@@ -13,6 +13,8 @@ export interface AssetResult {
   ao?: AOOptions | false;
   /** blend zones per joint name: soft geometry gets smooth multi-joint skin weights */
   skin?: Record<string, BlendZone>;
+  /** joint owning a point of 'auto'-skinned sculpted parts */
+  skinOwner?: (p: [number, number, number]) => number;
   extras?: Record<string, unknown>;
   /** texture atlas size for painted materials (default 1024) */
   atlasSize?: number;

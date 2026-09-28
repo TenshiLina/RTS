@@ -23,7 +23,12 @@ const smooth = (a: number, b: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 
-export function applySkinWeights(tris: Tri[], skeleton: JointDef[], zones: Record<string, BlendZone>) {
+export interface SkinOptions {
+  /** joint owning a point of an 'auto' triangle (nearest bone) */
+  owner?: (p: V3) => number;
+}
+
+export function applySkinWeights(tris: Tri[], skeleton: JointDef[], zones: Record<string, BlendZone>, opts: SkinOptions = {}) {
   const n = skeleton.length;
   const children: number[][] = skeleton.map(() => []);
   skeleton.forEach((j, i) => {
@@ -85,9 +90,29 @@ export function applySkinWeights(tris: Tri[], skeleton: JointDef[], zones: Recor
     return skin;
   };
 
+  // robes and armour skirts: the pelvis carries the waist, the thighs pull the hem along
+  const pelvis = skeleton.findIndex((j) => j.name === 'pelvis');
+  const thighL = skeleton.findIndex((j) => j.name === 'thighL'), thighR = skeleton.findIndex((j) => j.name === 'thighR');
+  const hipY = pelvis >= 0 ? skeleton[pelvis].pos[1] : 0.92;
+  const skirt = (p: V3): Skin => {
+    const k = smooth(hipY + 0.05, hipY - 0.45, p[1]) * 0.65;
+    const side = smooth(-0.1, 0.1, p[0]); // +X = the character's left
+    const w = [1 - k, k * side, k * (1 - side)];
+    const j = [pelvis, thighL, thighR];
+    const idx = [0, 1, 2].filter((i) => w[i] > 1e-3).sort((a, b) => w[b] - w[a]);
+    const tot = idx.reduce((a, i) => a + w[i], 0);
+    const s: Skin = { j: [0, 0, 0, 0], w: [0, 0, 0, 0] };
+    idx.forEach((i, n) => {
+      s.j[n] = j[i];
+      s.w[n] = w[i] / tot;
+    });
+    return s;
+  };
   for (const t of tris) {
     if (!t.soft) continue;
-    t.skin = [weigh(t.p[0], t.joint), weigh(t.p[1], t.joint), weigh(t.p[2], t.joint)];
+    if (t.skinMode === 'skirt' && pelvis >= 0 && thighL >= 0) t.skin = [skirt(t.p[0]), skirt(t.p[1]), skirt(t.p[2])];
+    else if (t.skinMode === 'auto' && opts.owner) t.skin = [weigh(t.p[0], opts.owner(t.p[0])), weigh(t.p[1], opts.owner(t.p[1])), weigh(t.p[2], opts.owner(t.p[2]))];
+    else t.skin = [weigh(t.p[0], t.joint), weigh(t.p[1], t.joint), weigh(t.p[2], t.joint)];
   }
   void add;
 }

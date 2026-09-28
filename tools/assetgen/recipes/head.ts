@@ -189,11 +189,11 @@ const SDF_DEPS = ['../sdf/sdf.ts', '../sdf/mesher.ts', '../sdf/simplify.ts'].map
  * Mesh a distance field inside a box and reduce it; normals come from the field. With `cache`,
  * the result is stored on disk under that key + the contents of `cache.deps` (source files).
  */
-export function meshSDF(f: SDF, min: V3, max: V3, cell: number, targetTris: number, cache?: { key: string; deps: string[] }, weight?: (x: number, y: number, z: number) => number): MeshedPart {
+export function meshSDF(f: SDF, min: V3, max: V3, cell: number, targetTris: number, cache?: { key: string; deps: string[] }, weight?: (x: number, y: number, z: number) => number, slack = 1.35): MeshedPart {
   if (cache) {
-    return cachedArrays(`meshSDF|${cache.key}|${min}|${max}|${cell}|${targetTris}|${!!weight}`, [...SDF_DEPS, ...cache.deps], () => ({ ...meshSDF(f, min, max, cell, targetTris, undefined, weight) }));
+    return cachedArrays(`meshSDF|${cache.key}|${min}|${max}|${cell}|${targetTris}|${!!weight}|${slack}`, [...SDF_DEPS, ...cache.deps], () => ({ ...meshSDF(f, min, max, cell, targetTris, undefined, weight, slack) }));
   }
-  const hi = surfaceNets(f, min, max, cell);
+  const hi = surfaceNets(f, min, max, cell, slack);
   const lo = simplify(hi, targetTris, { weight });
   const nv = lo.pos.length / 3;
   const pos = new Float64Array(nv * 3), nrm = new Float32Array(nv * 3);

@@ -10,8 +10,28 @@ import { OrbitCamera } from '../../render/camera';
 import { parseGLB } from '../../assets/gltf';
 import { buildTerrainGpu, TerrainGpu } from '../../render/terrainRenderer';
 import { generatePeachValley, heightAt, TerrainData, flattenRect, CELL_SIZE } from '../../world/terrain';
-import { DEG, m4FromTRS, quatAxisAngle, rng, V3, clamp } from '../../core/math';
+import { DEG, m4FromTRS, quatAxisAngle, rng, V3, clamp, normalize } from '../../core/math';
 import { TEAM_COLORS } from '../../core/materialModel';
+
+/** Neutral review lighting: a soft frontal key, strong even ambient, faint shadows, no grading. */
+const STUDIO_LIGHTING = {
+  ...DEFAULT_LIGHTING,
+  sunDir: normalize([-0.35, 0.45, 0.82]),
+  sunColor: 0xffffff,
+  sunIntensity: 1.35,
+  skyColor: 0xc9ccd0,
+  groundColor: 0x8d8b88,
+  ambient: 0.95,
+  rim: 0.08,
+  fogDensity: 0,
+  shadowStrength: 0.25,
+  exposure: 1.0,
+  saturation: 1.0,
+  contrast: 1.0,
+  bloom: 0.0,
+  warmth: [1, 1, 1] as [number, number, number],
+  vignette: 0,
+};
 
 interface ManifestEntry {
   id: string;
@@ -65,6 +85,8 @@ async function main() {
   let mode: 'gallery' | 'diorama' = (params.get('mode') as any) ?? (params.has('asset') ? 'gallery' : 'diorama');
   // cameo: C&C-style build-sidebar portrait (no terrain, tight framing)
   const cameo = params.get('cameo') === '1';
+  // studio: neutral, soft lighting on a grey backdrop for judging form (sculpt reviews)
+  const studio = params.get('studio') === '1';
   if (cameo) document.body.classList.add('noui');
   let selected = params.get('asset') ?? manifest.assets.find((a) => a.category === 'structure')?.id ?? manifest.assets[0].id;
   let team = num('team', 0);
@@ -269,10 +291,10 @@ async function main() {
       camera,
       instances,
       time,
-      terrain: cameo ? null : terrainGpu,
-      sky: !cameo,
-      clearColor: cameo ? [0.08, 0.1, 0.13] : undefined,
-      lighting: DEFAULT_LIGHTING,
+      terrain: cameo || studio ? null : terrainGpu,
+      sky: !cameo && !studio,
+      clearColor: studio ? [0.36, 0.37, 0.38] : cameo ? [0.08, 0.1, 0.13] : undefined,
+      lighting: studio ? STUDIO_LIGHTING : DEFAULT_LIGHTING,
       teamColors,
       grid: showGrid ? { cell: CELL_SIZE, opacity: 0.35 } : undefined,
     });
