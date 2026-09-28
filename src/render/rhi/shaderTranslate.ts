@@ -5,14 +5,14 @@
 //   * textures:         layout(set = S, binding = B) uniform sampler2D name;   (combined samplers)
 //   * stage IO:         layout(location = N) in/out ...
 //   * gl_VertexIndex / gl_InstanceIndex (Vulkan names)
-// Resource slot = set * 4 + binding (both for UBO binding points and texture units).
+// Resource slot = set * 8 + binding (both for UBO binding points and texture units).
 
 export interface ShaderReflection {
   blocks: { name: string; slot: number }[];
   samplers: { name: string; slot: number }[];
 }
 
-export const slotOf = (set: number, binding: number) => set * 4 + binding;
+export const slotOf = (set: number, binding: number) => set * 8 + binding;
 
 export function translateToES300(src: string, stage: 'vertex' | 'fragment', defines: Record<string, string | number | boolean> = {}, extraDefines: Record<string, string | number> = {}): { code: string; refl: ShaderReflection } {
   const refl: ShaderReflection = { blocks: [], samplers: [] };

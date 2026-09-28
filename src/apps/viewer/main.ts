@@ -50,7 +50,8 @@ async function main() {
   await Promise.all(
     manifest.assets.map(async (a) => {
       const data = parseGLB(await platform.loadBinary(`assets/models/${a.file}`), a.id);
-      models.set(a.id, renderer.createModel(data));
+      const images = await Promise.all(data.images.map((im) => platform.decodeImage(im.bytes, im.mime)));
+      models.set(a.id, renderer.createModel(data, images));
     }),
   );
 

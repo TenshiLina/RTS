@@ -14,6 +14,7 @@ for f in os.listdir('dist/assets'):
     if f.endswith('.js'):
         shutil.copy(os.path.join('dist/assets', f), os.path.join(out, 'assets', f))
 man = json.load(open('dist/assets/models/manifest.json'))
+man['assets'] = [a for a in man['assets'] if a.get('category') != 'dev']  # viewer-only previews
 for a in man['assets']:
     data = open(os.path.join('dist/assets/models', a['file']), 'rb').read()
     a['file'] = a['file'] + '.b64.txt'

@@ -5,3 +5,4 @@ public/assets/models/
 *.log
 .DS_Store
 /screenshots/tmp/
+tools/assetgen/.cache/

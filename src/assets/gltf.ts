@@ -42,6 +42,10 @@ export interface ModelData {
   animations: AnimationData[];
   sockets: SocketData[];
   extras: Record<string, any>;
+  /** embedded images (encoded) */
+  images: { mime: string; bytes: Uint8Array }[];
+  /** baked character atlas: image indices (see tools/assetgen/tex/bake.ts for the channel layout) */
+  atlas: { albedo: number; surface: number } | null;
 }
 
 const COMP_SIZE: Record<number, number> = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 };
@@ -96,9 +100,11 @@ export function parseGLB(buf: ArrayBuffer, name = 'model'): ModelData {
       team: ex.team ?? 0,
       sway: ex.sway ?? 0,
       emissive: ex.emissive ?? (m.emissiveFactor ? Math.max(...m.emissiveFactor) : 0),
+      // painted materials take colour / roughness / metalness / team from the atlas
+      painted: (ex.painted ?? 0) as number,
     };
   });
-  const defaultMat = { color: [0.8, 0.8, 0.8] as V3, rough: 0.8, metal: 0, pattern: 0, team: 0, sway: 0, emissive: 0 };
+  const defaultMat = { color: [0.8, 0.8, 0.8] as V3, rough: 0.8, metal: 0, pattern: 0, team: 0, sway: 0, emissive: 0, painted: 0 };
 
   // find the mesh node (first node with a mesh)
   const meshNodeIdx = json.nodes.findIndex((n: any) => n.mesh !== undefined);
@@ -166,10 +172,10 @@ export function parseGLB(buf: ArrayBuffer, name = 'model'): ModelData {
           dst.setUint8(o + 32, u8(Math.sqrt(m.color[0] * Math.min(tint[0], 1))));
           dst.setUint8(o + 33, u8(Math.sqrt(m.color[1] * Math.min(tint[1], 1))));
           dst.setUint8(o + 34, u8(Math.sqrt(m.color[2] * Math.min(tint[2], 1))));
-          dst.setUint8(o + 35, u8(m.team));
+          dst.setUint8(o + 35, m.painted ? 0 : u8(m.team));
           dst.setUint8(o + 36, u8(m.rough));
           dst.setUint8(o + 37, u8(m.metal));
-          dst.setUint8(o + 38, m.pattern);
+          dst.setUint8(o + 38, m.painted || m.pattern);
           dst.setUint8(o + 39, u8(Math.min(m.emissive / 8, 1)));
           dst.setUint8(o + 40, u8(ao));
           dst.setUint8(o + 41, u8(Math.min(1, (S ? S.data[i] : 0) + m.sway)));
@@ -240,8 +246,15 @@ export function parseGLB(buf: ArrayBuffer, name = 'model'): ModelData {
     sockets.push({ name: n.name.slice(7), joint: parentJoint, t: (n.translation ?? [0, 0, 0]) as V3 });
   });
 
+  const images = (json.images ?? []).map((im: any) => {
+    const bv = json.bufferViews[im.bufferView];
+    return { mime: im.mimeType as string, bytes: new Uint8Array(bin.buffer, bin.byteOffset + (bv.byteOffset ?? 0), bv.byteLength).slice() };
+  });
+  const sceneExtras = json.scenes?.[json.scene ?? 0]?.extras ?? {};
   return {
     name,
+    images,
+    atlas: sceneExtras.atlas ?? null,
     vertices,
     vertexCount: vbase,
     indices,

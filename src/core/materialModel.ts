@@ -43,7 +43,25 @@ export interface MaterialDef {
   team?: number;
   sway?: number;
   doubleSided?: boolean;
+  /**
+   * Build-time painter (tools/assetgen/tex/paint.ts). Painted materials get a baked texture
+   * atlas — albedo, team mask, normal, roughness, metalness — instead of a flat colour.
+   * Never exported as such; the runtime only sees `extras.painted` (the shading model).
+   */
+  paint?: unknown;
 }
+
+/** Shading models of painted (textured) materials — stored in the pattern byte. */
+export const PaintedShading = {
+  /** generic PBR: cloth, leather, metal, wood… */
+  Surface: 18,
+  /** skin: soft wrapped diffuse with a warm terminator */
+  Skin: 19,
+  /** hair: strand highlights */
+  Hair: 20,
+  /** eyes: glossy cornea */
+  Eye: 21,
+} as const;
 
 export function srgbToLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);

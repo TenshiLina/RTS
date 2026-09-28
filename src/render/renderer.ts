@@ -34,6 +34,9 @@ export interface GpuModel {
   indexFormat: 'uint16' | 'uint32';
   skinned: boolean;
   animIndex: Map<string, number>;
+  /** baked character atlas (painted materials); absent = the defaults */
+  albedo?: Texture;
+  surface?: Texture;
 }
 
 export interface RenderInstance {
@@ -182,6 +185,8 @@ const MESH_GROUP: BindGroupLayout = {
     { binding: 0, kind: 'texture', name: 'uJoints' },
     { binding: 1, kind: 'texture', name: 'uShadow' },
     { binding: 2, kind: 'texture', name: 'uFxMap' },
+    { binding: 3, kind: 'texture', name: 'uAlbedo' },
+    { binding: 4, kind: 'texture', name: 'uSurface' },
   ],
 };
 
@@ -223,6 +228,9 @@ export class Renderer {
   private shadowSize = 2048;
   private shadowSampler: Sampler;
   private linearClamp: Sampler;
+  private atlasSampler: Sampler;
+  private blankAlbedo: Texture;
+  private blankSurface: Texture;
   private nearestClamp: Sampler;
   private hdrFormat: 'rgba16float' | 'rgba8unorm';
   private samples: number;
@@ -245,6 +253,9 @@ export class Renderer {
     this.shadowSampler = device.createSampler({ filter: 'linear', compare: 'lequal', wrap: 'clamp' });
     this.linearClamp = device.createSampler({ filter: 'linear', wrap: 'clamp' });
     this.nearestClamp = device.createSampler({ filter: 'nearest', wrap: 'clamp' });
+    this.atlasSampler = device.createSampler({ filter: 'linear', wrap: 'clamp', mipmaps: true, anisotropy: 8 });
+    this.blankAlbedo = device.createTexture({ width: 1, height: 1, format: 'rgba8unorm-srgb', data: new Uint8Array([255, 255, 255, 0]), label: 'blank-albedo' });
+    this.blankSurface = device.createTexture({ width: 1, height: 1, format: 'rgba8unorm', data: new Uint8Array([204, 128, 0, 128]), label: 'blank-surface' });
     this.blankFx = device.createTexture({ width: 1, height: 1, format: 'rgba8unorm', data: new Uint8Array(4), label: 'blank-fx' });
     this.lowHeight = device.createTexture({ width: 1, height: 1, format: 'r16float', data: new Uint16Array([0xfbff]), label: 'low-height' });
     this.createPipelines();
@@ -351,13 +362,23 @@ export class Renderer {
     return this.samples;
   }
 
-  createModel(data: ModelData): GpuModel {
+  /**
+   * Upload a model. `images` are the model's embedded images, decoded by the platform
+   * (Platform.decodeImage) in the order of `data.images`.
+   */
+  createModel(data: ModelData, images?: { width: number; height: number; source: unknown }[]): GpuModel {
     const d = this.device;
+    let albedo: Texture | undefined, surface: Texture | undefined;
+    if (data.atlas && images) {
+      const a = images[data.atlas.albedo], s = images[data.atlas.surface];
+      albedo = d.createTexture({ width: a.width, height: a.height, format: 'rgba8unorm-srgb', source: a.source, mipmaps: true, label: data.name + '-albedo' });
+      surface = d.createTexture({ width: s.width, height: s.height, format: 'rgba8unorm', source: s.source, mipmaps: true, label: data.name + '-surface' });
+    }
     const vb = d.createBuffer({ size: data.vertices.byteLength, usage: 'vertex', data: new Uint8Array(data.vertices), label: data.name });
     const ib = d.createBuffer({ size: data.indices.byteLength, usage: 'index', data: data.indices, label: data.name + '-idx' });
     const animIndex = new Map<string, number>();
     data.animations.forEach((a, i) => animIndex.set(a.name, i));
-    return { name: data.name, data, vb, ib, indexCount: data.indices.length, indexFormat: data.indices instanceof Uint32Array ? 'uint32' : 'uint16', skinned: data.joints.length > 0, animIndex };
+    return { name: data.name, data, vb, ib, indexCount: data.indices.length, indexFormat: data.indices instanceof Uint32Array ? 'uint32' : 'uint16', skinned: data.joints.length > 0, animIndex, albedo, surface };
   }
 
   private targetCache = new Map<string, RenderTargets>();
@@ -573,10 +594,12 @@ export class Renderer {
         depth: { texture: tg.msaaDepth, load: 'clear', clearDepth: 1 },
       });
       const fxTex = view.groundFx ?? this.blankFx;
-      const meshGroup = (p: Pipeline) => d.createBindGroup(p, 1, [
+      const meshGroup = (p: Pipeline, m?: GpuModel) => d.createBindGroup(p, 1, [
         { binding: 0, texture: this.jointTex, sampler: this.nearestClamp },
         { binding: 1, texture: this.shadowMap, sampler: this.shadowSampler },
         { binding: 2, texture: fxTex, sampler: this.linearClamp },
+        { binding: 3, texture: m?.albedo ?? this.blankAlbedo, sampler: this.atlasSampler },
+        { binding: 4, texture: m?.surface ?? this.blankSurface, sampler: this.atlasSampler },
       ]);
       if (view.terrain) {
         pass.setPipeline(this.pipes.terrain);
@@ -590,8 +613,12 @@ export class Renderer {
       }
       pass.setPipeline(this.pipes.mesh);
       pass.setBindGroup(0, frameGroupFor(this.pipes.mesh));
-      pass.setBindGroup(1, meshGroup(this.pipes.mesh));
+      const plain = meshGroup(this.pipes.mesh);
+      pass.setBindGroup(1, plain);
+      let bound: BindGroup = plain;
       for (const dr of draws) {
+        const want = dr.model.albedo ? meshGroup(this.pipes.mesh, dr.model) : plain;
+        if (want !== bound) pass.setBindGroup(1, (bound = want));
         pass.setVertexBuffer(0, dr.model.vb);
         pass.setVertexBuffer(1, this.instBuf, dr.first * INSTANCE_FLOATS * 4);
         pass.setIndexBuffer(dr.model.ib, dr.model.indexFormat);

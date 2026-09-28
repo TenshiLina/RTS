@@ -28,6 +28,8 @@ export interface SocketDef {
 }
 export interface ExportOptions {
   ao?: Float32Array;
+  /** baked texture atlas (encoded images) for painted materials */
+  atlas?: { albedo: Uint8Array; surface: Uint8Array; mime: string };
   skeleton?: JointDef[];
   animations?: AnimDef[];
   sockets?: SocketDef[];
@@ -74,7 +76,7 @@ const ARRAY_BUFFER = 34962, ELEMENT_ARRAY_BUFFER = 34963;
 const FLOAT = 5126, UBYTE = 5121, USHORT = 5123, UINT = 5125;
 
 export function exportGLB(mb: MeshBuilder, opts: ExportOptions = {}): Uint8Array {
-  const { ao, skeleton, animations = [], sockets = [], extras = {} } = opts;
+  const { ao, skeleton, animations = [], sockets = [], extras = {}, atlas } = opts;
   const skinned = !!skeleton && skeleton.length > 0;
   const hasSway = mb.tris.some((t) => t.sway.some((s) => s > 0));
 
@@ -108,7 +110,7 @@ export function exportGLB(mb: MeshBuilder, opts: ExportOptions = {}): Uint8Array
       const a = aoAll ? aoAll[ti * 3 + k] : 1;
       const sk = t.skin?.[k];
       const skinKey = sk ? sk.j.join(',') + ':' + sk.w.map((w) => w.toFixed(3)).join(',') : '';
-      const key = [p[0].toFixed(4), p[1].toFixed(4), p[2].toFixed(4), n[0].toFixed(3), n[1].toFixed(3), n[2].toFixed(3), uv[0].toFixed(3), uv[1].toFixed(3), t.mat, t.joint, skinKey, t.sway[k].toFixed(2), a.toFixed(2), t.tint.join(',')].join('|');
+      const key = [p[0].toFixed(4), p[1].toFixed(4), p[2].toFixed(4), n[0].toFixed(3), n[1].toFixed(3), n[2].toFixed(3), uv[0].toFixed(5), uv[1].toFixed(5), t.mat, t.joint, skinKey, t.sway[k].toFixed(2), a.toFixed(2), t.tint.join(',')].join('|');
       let idx = vmap.get(key);
       if (idx === undefined) {
         idx = P.length / 3;
@@ -162,14 +164,30 @@ export function exportGLB(mb: MeshBuilder, opts: ExportOptions = {}): Uint8Array
     primitives.push({ attributes: attr, indices: acc, material: m, mode: 4 });
   });
 
+  // images (embedded, glTF-style) for the baked atlas
+  let images: any[] | undefined, textures: any[] | undefined, samplers: any[] | undefined;
+  if (atlas) {
+    images = [
+      { name: 'albedo_team', mimeType: atlas.mime, bufferView: bin.add(atlas.albedo) },
+      { name: 'rough_normalY_metal_normalX', mimeType: atlas.mime, bufferView: bin.add(atlas.surface) },
+    ];
+    samplers = [{ magFilter: 9729, minFilter: 9987, wrapS: 33071, wrapT: 33071 }];
+    textures = [{ sampler: 0, source: 0 }, { sampler: 0, source: 1 }];
+  }
   const materials = mb.materials.map((m: MaterialDef) => {
     const c = hexToLinear(m.color);
     const e = m.emissive ?? 0;
+    const paint = atlas ? (m.paint as { shading?: number } | undefined) : undefined;
     const out: any = {
       name: m.name,
       pbrMetallicRoughness: { baseColorFactor: [c[0], c[1], c[2], 1], metallicFactor: m.metallic ?? 0, roughnessFactor: m.roughness ?? 0.8 },
       extras: { pattern: m.pattern ?? 0, team: m.team ?? 0, sway: m.sway ?? 0, emissive: e },
     };
+    if (paint) {
+      // colour, roughness and metalness come from the atlas
+      out.pbrMetallicRoughness = { baseColorFactor: [1, 1, 1, 1], baseColorTexture: { index: 0 }, metallicFactor: 1, roughnessFactor: 1 };
+      out.extras.painted = paint.shading ?? 18;
+    }
     if (e > 0) out.emissiveFactor = [Math.min(1, c[0] * e), Math.min(1, c[1] * e), Math.min(1, c[2] * e)];
     if (m.doubleSided) out.doubleSided = true;
     return out;
@@ -262,6 +280,12 @@ export function exportGLB(mb: MeshBuilder, opts: ExportOptions = {}): Uint8Array
     buffers: [{ byteLength: binData.byteLength }],
   };
   if (skins) json.skins = skins;
+  if (images) {
+    json.images = images;
+    json.samplers = samplers;
+    json.textures = textures;
+    json.scenes[0].extras = { ...json.scenes[0].extras, atlas: { albedo: 0, surface: 1 } };
+  }
   if (anims.length) json.animations = anims;
 
   const jsonBytes = new TextEncoder().encode(JSON.stringify(json));

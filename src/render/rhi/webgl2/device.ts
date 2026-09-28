@@ -4,7 +4,7 @@ import type {
   Device, DeviceCaps, Buffer, BufferDesc, Texture, TextureDesc, Sampler, SamplerDesc, Pipeline, PipelineDesc,
   BindGroup, BindGroupEntry, RenderPass, RenderPassDesc, TextureFormat, VertexFormat, CompareFunc,
 } from '../types';
-import { translateToES300 } from '../shaderTranslate';
+import { slotOf, translateToES300 } from '../shaderTranslate';
 
 type GL = WebGL2RenderingContext;
 
@@ -67,6 +67,7 @@ class GLBindGroup implements BindGroup {
 
 const FORMAT: Record<TextureFormat, { internal: number; format: number; type: number; depth?: boolean }> = {
   rgba8unorm: { internal: 0x8058, format: 0x1908, type: 0x1401 },
+  'rgba8unorm-srgb': { internal: 0x8c43, format: 0x1908, type: 0x1401 },
   rgba16float: { internal: 0x881a, format: 0x1908, type: 0x140b },
   rgba32float: { internal: 0x8814, format: 0x1908, type: 0x1406 },
   r16float: { internal: 0x822d, format: 0x1903, type: 0x140b },
@@ -184,6 +185,12 @@ export class WebGL2Device implements Device {
     if (desc.data) {
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, desc.width, desc.height, f.format, f.type, desc.data);
+      if (desc.mipmaps) gl.generateMipmap(gl.TEXTURE_2D);
+    } else if (desc.source) {
+      // decoded images: exact channel values (alpha is data, not coverage)
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, f.format, f.type, desc.source as TexImageSource);
       if (desc.mipmaps) gl.generateMipmap(gl.TEXTURE_2D);
     }
     // sane default sampling state (samplers objects override)
@@ -362,7 +369,7 @@ export class WebGL2Device implements Device {
         const g = group as GLBindGroup;
         let d = 0;
         for (const e of g.entries) {
-          const slot = index * 4 + e.binding;
+          const slot = slotOf(index, e.binding);
           if (e.buffer) {
             const off = (e.offset ?? 0) + (dyn && dyn[d] !== undefined ? dyn[d] : 0);
             d++;

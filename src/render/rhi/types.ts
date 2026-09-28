@@ -30,6 +30,8 @@ export interface DeviceCaps {
 
 export type TextureFormat =
   | 'rgba8unorm'
+  /** 8-bit colour stored sRGB-encoded; sampling returns linear values */
+  | 'rgba8unorm-srgb'
   | 'rgba16float'
   | 'rgba32float'
   | 'r16float'
@@ -92,6 +94,8 @@ export interface TextureDesc {
   /** sampled via a comparison sampler (shadow maps) */
   depthCompare?: boolean;
   data?: ArrayBufferView;
+  /** decoded platform image (see Platform.decodeImage) to upload instead of `data` */
+  source?: unknown;
   label?: string;
 }
 

@@ -25,13 +25,16 @@ export interface ModelLibrary {
 }
 
 export async function loadModels(platform: Platform, renderer: Renderer, onProgress?: (done: number, total: number) => void): Promise<ModelLibrary> {
-  const manifest: { assets: ManifestEntry[] } = JSON.parse(await platform.loadText('assets/models/manifest.json'));
+  const all: { assets: ManifestEntry[] } = JSON.parse(await platform.loadText('assets/models/manifest.json'));
+  // dev assets (sculpt previews, test sheets) are for the viewer only
+  const manifest = { assets: all.assets.filter((a) => a.category !== 'dev') };
   const models = new Map<string, GpuModel>();
   let done = 0;
   await Promise.all(
     manifest.assets.map(async (a) => {
       const data = parseGLB(await platform.loadBinary(`assets/models/${a.file}`), a.id);
-      models.set(a.id, renderer.createModel(data));
+      const images = await Promise.all(data.images.map((im) => platform.decodeImage(im.bytes, im.mime)));
+      models.set(a.id, renderer.createModel(data, images));
       onProgress?.(++done, manifest.assets.length);
     }),
   );

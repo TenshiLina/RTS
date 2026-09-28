@@ -10,6 +10,7 @@ import { caravan } from './caravan';
 import { workshop } from './workshop';
 import { academy } from './academy';
 import { fireAdept, iceAdept, waterAdept, airAdept } from './adepts';
+import { devHeads } from './dev';
 import { pine, bamboo, peachTree, rock, scholarRock, jadeSmall, jadeLarge } from './environment';
 
 export const RECIPES: Recipe[] = [
@@ -21,4 +22,6 @@ export const RECIPES: Recipe[] = [
   jadeSmall, jadeLarge,
   // environment
   pine, bamboo, peachTree, rock, scholarRock,
+  // viewer-only previews
+  devHeads,
 ];

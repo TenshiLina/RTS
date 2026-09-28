@@ -100,6 +100,13 @@ export interface PlayOptions {
   duration?: number;
 }
 
+export interface DecodedImage {
+  width: number;
+  height: number;
+  /** backend-specific handle (web: ImageBitmap), passed to TextureDesc.source */
+  source: unknown;
+}
+
 export interface Platform {
   readonly name: string;
   readonly surface: Surface;
@@ -109,6 +116,8 @@ export interface Platform {
   requestFrame(cb: (timeSec: number) => void): void;
   loadBinary(path: string): Promise<ArrayBuffer>;
   loadText(path: string): Promise<string>;
+  /** Decode an encoded image (PNG, WebP…) to something the render device can upload. */
+  decodeImage(bytes: Uint8Array, mime: string): Promise<DecodedImage>;
   storageGet(key: string): string | null;
   storageSet(key: string, value: string): void;
   /** Contextual pointer: select / attack / move / place / power / sell. */

@@ -20,6 +20,17 @@ export interface Tri {
   soft?: boolean;
   /** per-vertex joints/weights (set by kit/skin.ts); absent = rigidly bound to `joint` */
   skin?: [Skin, Skin, Skin];
+  /** the primitive this triangle came from (one call to box/tube/surface/mesh/…) */
+  piece?: number;
+  /** the primitive's own parameters (0..1), e.g. around/along a tube — painters place trims with them */
+  pp?: [V2, V2, V2];
+  /** a natural unwrap of the primitive in metres (texture charts); absent = unwrap automatically */
+  ct?: [V2, V2, V2];
+}
+/** Per-vertex extras a primitive can attach (see Tri.pp / Tri.ct). */
+export interface VX {
+  pp: V2[];
+  ct: V2[];
 }
 export interface Skin {
   j: [number, number, number, number];
@@ -68,6 +79,9 @@ export class MeshBuilder {
   sway = 0;
   tint: V3 = [1, 1, 1];
   soft = false;
+  /** current primitive id (see Tri.piece) */
+  piece = 0;
+  private pieces = 0;
 
   constructor(public name = 'mesh') {}
 
@@ -130,9 +144,14 @@ export class MeshBuilder {
     return this.cur.s;
   }
 
+  /** Start a new primitive (texture chart / painter piece). */
+  beginPiece() {
+    return (this.piece = ++this.pieces);
+  }
+
   // ---------------------------------------------------------------- raw emit
   /** Emit a triangle in local space. Normals are optional (flat if omitted). CCW = front. */
-  tri(p0: V3, p1: V3, p2: V3, uv?: [V2, V2, V2], n?: [V3, V3, V3], sway?: [number, number, number]) {
+  tri(p0: V3, p1: V3, p2: V3, uv?: [V2, V2, V2], n?: [V3, V3, V3], sway?: [number, number, number], ex?: VX) {
     if (this.curMat < 0) throw new Error('No material set');
     const m = this.cur.m;
     let a = m4TransformPoint(m, p0), b = m4TransformPoint(m, p1), c = m4TransformPoint(m, p2);
@@ -146,19 +165,31 @@ export class MeshBuilder {
     }
     let uvs: [V2, V2, V2] = uv ?? autoUV(a, b, c, ns[0]);
     let sw: [number, number, number] = sway ?? [this.sway, this.sway, this.sway];
+    let pp: [V2, V2, V2] | undefined, ct: [V2, V2, V2] | undefined;
+    if (ex) {
+      const k = (this.cur.s[0] + this.cur.s[1] + this.cur.s[2]) / 3;
+      pp = [ex.pp[0], ex.pp[1], ex.pp[2]];
+      ct = [[ex.ct[0][0] * k, ex.ct[0][1] * k], [ex.ct[1][0] * k, ex.ct[1][1] * k], [ex.ct[2][0] * k, ex.ct[2][1] * k]];
+    }
     if (this.cur.flip) {
       [b, c] = [c, b];
       ns = [ns[0], ns[2], ns[1]];
       uvs = [uvs[0], uvs[2], uvs[1]];
       sw = [sw[0], sw[2], sw[1]];
+      if (pp && ct) {
+        pp = [pp[0], pp[2], pp[1]];
+        // mirrored: flip the chart too so it keeps the same winding as the triangle
+        ct = [[-ct[0][0], ct[0][1]], [-ct[2][0], ct[2][1]], [-ct[1][0], ct[1][1]]];
+      }
     }
     // guard degenerate triangles
     if (len(cross(sub(b, a), sub(c, a))) < 1e-10) return;
-    this.tris.push({ p: [a, b, c], n: ns, uv: uvs, mat: this.curMat, joint: this.joint, sway: sw, tint: this.tint, soft: this.soft || undefined });
+    this.tris.push({ p: [a, b, c], n: ns, uv: uvs, mat: this.curMat, joint: this.joint, sway: sw, tint: this.tint, soft: this.soft || undefined, piece: this.piece || undefined, pp, ct });
   }
-  quad(p0: V3, p1: V3, p2: V3, p3: V3, uv?: [V2, V2, V2, V2], n?: [V3, V3, V3, V3]) {
-    this.tri(p0, p1, p2, uv && [uv[0], uv[1], uv[2]], n && [n[0], n[1], n[2]]);
-    this.tri(p0, p2, p3, uv && [uv[0], uv[2], uv[3]], n && [n[0], n[2], n[3]]);
+  quad(p0: V3, p1: V3, p2: V3, p3: V3, uv?: [V2, V2, V2, V2], n?: [V3, V3, V3, V3], ex?: VX) {
+    const e = (i: number, j: number, k: number): VX | undefined => ex && { pp: [ex.pp[i], ex.pp[j], ex.pp[k]], ct: [ex.ct[i], ex.ct[j], ex.ct[k]] };
+    this.tri(p0, p1, p2, uv && [uv[0], uv[1], uv[2]], n && [n[0], n[1], n[2]], undefined, e(0, 1, 2));
+    this.tri(p0, p2, p3, uv && [uv[0], uv[2], uv[3]], n && [n[0], n[2], n[3]], undefined, e(0, 2, 3));
   }
   /** Triangle whose winding is chosen so the face points away from `inside`. */
   triOut(p0: V3, p1: V3, p2: V3, inside: V3, uv?: [V2, V2, V2]) {
@@ -171,6 +202,7 @@ export class MeshBuilder {
   // ---------------------------------------------------------------- primitives
   /** Axis-aligned box, optionally bevelled. `c` is the centre. */
   box(size: V3, c: V3 = [0, 0, 0], bevel = 0) {
+    this.beginPiece();
     const [hx, hy, hz] = [size[0] / 2, size[1] / 2, size[2] / 2];
     const b = Math.min(bevel, hx * 0.49, hy * 0.49, hz * 0.49);
     const s = this.cur.s;
@@ -236,6 +268,7 @@ export class MeshBuilder {
   /** Surface of revolution around +Y. profile = [radius, y][] from bottom to top. */
   lathe(profile: V2[], sides = 12, opts: { smooth?: boolean; capTop?: boolean; capBottom?: boolean; phase?: number; arc?: number } = {}) {
     const { smooth = true, capTop = false, capBottom = false, phase = 0, arc = Math.PI * 2 } = opts;
+    this.beginPiece();
     const full = arc >= Math.PI * 2 - 1e-6;
     const ringCount = full ? sides : sides + 1;
     const ang = (i: number) => phase + (arc * i) / sides;
@@ -260,18 +293,25 @@ export class MeshBuilder {
         const p11: V3 = [Math.sin(a1) * r1, y1, Math.cos(a1) * r1];
         const u0 = (arc * j / sides) * rMax, u1 = (arc * (j + 1) / sides) * rMax;
         const uv: [V2, V2, V2, V2] = [[u0, vlen[i]], [u1, vlen[i]], [u1, vlen[i + 1]], [u0, vlen[i + 1]]];
+        const tot = vlen[vlen.length - 1] || 1;
+        const f0 = j / sides, f1 = (j + 1) / sides;
+        const ex: VX = {
+          pp: [[f0, vlen[i] / tot], [f1, vlen[i] / tot], [f1, vlen[i + 1] / tot], [f0, vlen[i + 1] / tot]],
+          ct: [[(f0 - 0.5) * arc * r0, vlen[i]], [(f1 - 0.5) * arc * r0, vlen[i]], [(f1 - 0.5) * arc * r1, vlen[i + 1]], [(f0 - 0.5) * arc * r1, vlen[i + 1]]],
+        };
         if (smooth) {
           const n = (a: number, k: number): V3 => [Math.sin(a) * pn[k][0], pn[k][1], Math.cos(a) * pn[k][0]];
           const amid0 = a0, amid1 = a1;
-          this.quad(p00, p01, p11, p10, uv, [n(amid0, i), n(amid1, i), n(amid1, i + 1), n(amid0, i + 1)]);
+          this.quad(p00, p01, p11, p10, uv, [n(amid0, i), n(amid1, i), n(amid1, i + 1), n(amid0, i + 1)], ex);
         } else {
-          this.quad(p00, p01, p11, p10, uv);
+          this.quad(p00, p01, p11, p10, uv, undefined, ex);
         }
       }
     }
     const cap = (k: number, up: boolean) => {
       const [r, y] = profile[k];
       if (r < 1e-6) return;
+      this.beginPiece();
       const c: V3 = [0, y, 0];
       for (let j = 0; j < sides; j++) {
         const a0 = ang(j), a1 = ang(j + 1);
@@ -298,6 +338,12 @@ export class MeshBuilder {
   /** UV-sphere. */
   sphere(r: number, seg = 12, rings = 8, opts: { smooth?: boolean; squash?: V3; jitter?: (p: V3) => number } = {}) {
     const { smooth = true, squash = [1, 1, 1], jitter } = opts;
+    this.beginPiece();
+    const sq = (squash[0] + squash[2]) / 2;
+    const exq = (ii: number[], jj: number[]): VX => ({
+      pp: ii.map((i, k) => [jj[k] / seg, i / rings] as V2),
+      ct: ii.map((i, k) => [(jj[k] / seg - 0.5) * Math.PI * 2 * r * sq * Math.max(0.15, Math.sin((Math.PI * i) / rings)), (i / rings) * Math.PI * r * squash[1]] as V2),
+    });
     const pt = (i: number, j: number): { p: V3; n: V3 } => {
       const th = (Math.PI * i) / rings, ph = (Math.PI * 2 * j) / seg;
       const n: V3 = [Math.sin(th) * Math.sin(ph), Math.cos(th), Math.sin(th) * Math.cos(ph)];
@@ -308,15 +354,16 @@ export class MeshBuilder {
       const a = pt(i, j), b = pt(i, j + 1), c = pt(i + 1, j + 1), d = pt(i + 1, j);
       const uv = (ii: number, jj: number): V2 => [(jj / seg) * Math.PI * 2 * r, (1 - ii / rings) * Math.PI * r];
       const uvs: [V2, V2, V2, V2] = [uv(i, j), uv(i, j + 1), uv(i + 1, j + 1), uv(i + 1, j)];
-      if (i === 0) this.tri(a.p, d.p, c.p, [uvs[0], uvs[3], uvs[2]], smooth && !jitter ? [a.n, d.n, c.n] : undefined);
-      else if (i === rings - 1) this.tri(a.p, d.p, b.p, [uvs[0], uvs[3], uvs[1]], smooth && !jitter ? [a.n, d.n, b.n] : undefined);
-      else this.quad(a.p, d.p, c.p, b.p, [uvs[0], uvs[3], uvs[2], uvs[1]], smooth && !jitter ? [a.n, d.n, c.n, b.n] : undefined);
+      if (i === 0) this.tri(a.p, d.p, c.p, [uvs[0], uvs[3], uvs[2]], smooth && !jitter ? [a.n, d.n, c.n] : undefined, undefined, exq([i, i + 1, i + 1], [j + 0.5, j, j + 1]));
+      else if (i === rings - 1) this.tri(a.p, d.p, b.p, [uvs[0], uvs[3], uvs[1]], smooth && !jitter ? [a.n, d.n, b.n] : undefined, undefined, exq([i, i + 1, i], [j, j + 0.5, j + 1]));
+      else this.quad(a.p, d.p, c.p, b.p, [uvs[0], uvs[3], uvs[2], uvs[1]], smooth && !jitter ? [a.n, d.n, c.n, b.n] : undefined, exq([i, i + 1, i + 1, i], [j, j, j + 1, j + 1]));
     }
   }
 
   /** Icosphere blob with optional per-vertex displacement; smooth normals recomputed. */
   blob(r: number, detail = 1, opts: { squash?: V3; displace?: (dir: V3) => number; smooth?: boolean } = {}) {
     const { squash = [1, 1, 1], displace, smooth = true } = opts;
+    this.beginPiece();
     const { verts, faces } = icosphere(detail);
     const pos = verts.map((v) => {
       const k = displace ? 1 + displace(v) : 1;
@@ -338,6 +385,7 @@ export class MeshBuilder {
   /** Prism from a polygon in the XZ plane (as [x,z]), CCW when viewed from above (+Y). Caps use a fan (convex polygons). */
   extrude(poly: V2[], y0: number, y1: number, opts: { capTop?: boolean; capBottom?: boolean } = {}) {
     const { capTop = true, capBottom = true } = opts;
+    this.beginPiece();
     // auto-orient: accept either winding
     let area = 0;
     for (let i = 0; i < poly.length; i++) {
@@ -363,6 +411,7 @@ export class MeshBuilder {
   /** Sweep a circle (or n-gon) along a polyline using parallel-transport frames. */
   tube(path: V3[], radius: number | ((t: number) => number), sides = 8, opts: { capStart?: boolean; capEnd?: boolean; smooth?: boolean; phase?: number; squash?: V2 } = {}) {
     const { capStart = true, capEnd = true, smooth = true, phase = 0, squash = [1, 1] } = opts;
+    this.beginPiece();
     const n = path.length;
     const rad = (i: number) => (typeof radius === 'number' ? radius : radius(i / (n - 1)));
     const tangents: V3[] = path.map((_, i) => normalize(sub(path[Math.min(n - 1, i + 1)], path[Math.max(0, i - 1)])));
@@ -394,14 +443,22 @@ export class MeshBuilder {
     };
     const rings = path.map((_, i) => ring(i));
     const circ = Math.PI * 2 * Math.max(rad(0), 0.01);
+    const L = along[n - 1] || 1;
+    const sq = (squash[0] + squash[1]) / 2;
     for (let i = 0; i < n - 1; i++) for (let j = 0; j < sides; j++) {
       const a = rings[i][j], b = rings[i][j + 1], c = rings[i + 1][j + 1], d = rings[i + 1][j];
       const uv: [V2, V2, V2, V2] = [[(j / sides) * circ, along[i]], [((j + 1) / sides) * circ, along[i]], [((j + 1) / sides) * circ, along[i + 1]], [(j / sides) * circ, along[i + 1]]];
-      this.quad(a.p, b.p, c.p, d.p, uv, smooth ? [a.nn, b.nn, c.nn, d.nn] : undefined);
+      const f0 = j / sides, f1 = (j + 1) / sides, c0 = Math.PI * 2 * rad(i) * sq, c1 = Math.PI * 2 * rad(i + 1) * sq;
+      const ex: VX = {
+        pp: [[f0, along[i] / L], [f1, along[i] / L], [f1, along[i + 1] / L], [f0, along[i + 1] / L]],
+        ct: [[(f0 - 0.5) * c0, along[i]], [(f1 - 0.5) * c0, along[i]], [(f1 - 0.5) * c1, along[i + 1]], [(f0 - 0.5) * c1, along[i + 1]]],
+      };
+      this.quad(a.p, b.p, c.p, d.p, uv, smooth ? [a.nn, b.nn, c.nn, d.nn] : undefined, ex);
     }
     const cap = (i: number, dirSign: number) => {
       const r = rings[i];
       if (rad(i) < 1e-5) return;
+      this.beginPiece();
       for (let j = 0; j < sides; j++) {
         if (dirSign > 0) this.tri(path[i], r[j + 1].p, r[j].p);
         else this.tri(path[i], r[j].p, r[j + 1].p);
@@ -414,10 +471,24 @@ export class MeshBuilder {
   /** Grid surface from a parametric function (u,v in [0,1]). Normals are averaged (smooth). */
   surface(f: (u: number, v: number) => V3, nu: number, nv: number, opts: { uvScale?: V2; smooth?: boolean; flip?: boolean; sway?: (u: number, v: number) => number; uvFn?: (u: number, v: number) => V2 } = {}) {
     const { uvScale = [1, 1], smooth = true, flip = false, sway, uvFn } = opts;
+    this.beginPiece();
     const P: V3[][] = [];
     for (let i = 0; i <= nu; i++) {
       P.push([]);
       for (let j = 0; j <= nv; j++) P[i].push(f(i / nu, j / nv));
+    }
+    // natural unwrap: arc length along u (each row centred) and along v
+    const CU: number[][] = P.map(() => []), CV: number[][] = P.map(() => []);
+    for (let j = 0; j <= nv; j++) {
+      let acc = 0;
+      CU[0][j] = 0;
+      for (let i = 1; i <= nu; i++) CU[i][j] = acc += len(sub(P[i][j], P[i - 1][j]));
+      for (let i = 0; i <= nu; i++) CU[i][j] -= acc / 2;
+    }
+    for (let i = 0; i <= nu; i++) {
+      let acc = 0;
+      CV[i][0] = 0;
+      for (let j = 1; j <= nv; j++) CV[i][j] = acc += len(sub(P[i][j], P[i][j - 1]));
     }
     const N: V3[][] = P.map((row) => row.map(() => [0, 0, 0] as V3));
     if (smooth) {
@@ -442,8 +513,11 @@ export class MeshBuilder {
       const uvs = [q0, q1, q2, q3].map(([x, y]) => uv(x, y));
       const ns = [q0, q1, q2, q3].map(([x, y]) => nn(x, y));
       const sws = [q0, q1, q2, q3].map(([x, y]) => sw(x, y));
-      this.tri(pts[0], pts[1], pts[2], [uvs[0], uvs[1], uvs[2]], smooth ? [ns[0], ns[1], ns[2]] : undefined, [sws[0], sws[1], sws[2]]);
-      this.tri(pts[0], pts[2], pts[3], [uvs[0], uvs[2], uvs[3]], smooth ? [ns[0], ns[2], ns[3]] : undefined, [sws[0], sws[2], sws[3]]);
+      const pps = [q0, q1, q2, q3].map(([x, y]) => [x / nu, y / nv] as V2);
+      // (a flipped surface mirrors its chart so the chart keeps the triangles' winding)
+      const cts = [q0, q1, q2, q3].map(([x, y]) => [flip ? -CU[x][y] : CU[x][y], CV[x][y]] as V2);
+      this.tri(pts[0], pts[1], pts[2], [uvs[0], uvs[1], uvs[2]], smooth ? [ns[0], ns[1], ns[2]] : undefined, [sws[0], sws[1], sws[2]], { pp: [pps[0], pps[1], pps[2]], ct: [cts[0], cts[1], cts[2]] });
+      this.tri(pts[0], pts[2], pts[3], [uvs[0], uvs[2], uvs[3]], smooth ? [ns[0], ns[2], ns[3]] : undefined, [sws[0], sws[2], sws[3]], { pp: [pps[0], pps[2], pps[3]], ct: [cts[0], cts[2], cts[3]] });
     }
   }
 
@@ -464,21 +538,44 @@ export class MeshBuilder {
     this.surface(f, nu, nv, { uvFn: (u, v) => [u * w, v * h], sway, smooth: false, flip: true });
   }
 
+  /**
+   * Append an indexed triangle mesh (e.g. from the SDF mesher) in local space. Normals per vertex
+   * are optional (flat if omitted); `uv` gives per-vertex texture coordinates.
+   */
+  mesh(pos: ArrayLike<number>, idx: ArrayLike<number>, nrm?: ArrayLike<number>, uv?: ArrayLike<number>) {
+    const P = (v: number): V3 => [pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]];
+    const N = (v: number): V3 => [nrm![v * 3], nrm![v * 3 + 1], nrm![v * 3 + 2]];
+    const U = (v: number): V2 => [uv![v * 2], uv![v * 2 + 1]];
+    this.beginPiece();
+    for (let i = 0; i < idx.length; i += 3) {
+      const a = idx[i], b = idx[i + 1], c = idx[i + 2];
+      this.tri(P(a), P(b), P(c), uv ? [U(a), U(b), U(c)] : undefined, nrm ? [N(a), N(b), N(c)] : undefined);
+    }
+  }
+
   /** Merge another builder's triangles (already in its model space) under the current transform. */
   append(other: MeshBuilder) {
     const remap = other.materials.map((m) => {
       this.mat(m);
       return this.curMat;
     });
+    const pieceMap = new Map<number, number>();
+    const savedPiece = this.piece;
     for (const t of other.tris) {
       this.curMat = remap[t.mat];
       const saved = this.joint, savedSoft = this.soft;
       this.joint = t.joint;
       this.soft = !!t.soft;
-      this.tri(t.p[0], t.p[1], t.p[2], t.uv, t.n, t.sway);
+      if (t.piece) {
+        let pc = pieceMap.get(t.piece);
+        if (pc === undefined) pieceMap.set(t.piece, (pc = this.beginPiece()));
+        this.piece = pc;
+      }
+      this.tri(t.p[0], t.p[1], t.p[2], t.uv, t.n, t.sway, t.pp && t.ct ? { pp: t.pp, ct: t.ct } : undefined);
       this.joint = saved;
       this.soft = savedSoft;
     }
+    this.piece = savedPiece;
   }
 
   bounds(): { min: V3; max: V3 } {

@@ -13,6 +13,11 @@ layout(location = 8) flat in vec4 vStatus;
 
 layout(set = 1, binding = 1) uniform sampler2DShadow uShadow;
 layout(set = 1, binding = 2) uniform sampler2D uFxMap;
+// baked character atlas (painted materials, pattern >= 18):
+//   uAlbedo  rgb = colour (sRGB texture), a = team mask
+//   uSurface r = roughness, g = normal.y, b = metalness, a = normal.x (tangent space)
+layout(set = 1, binding = 3) uniform sampler2D uAlbedo;
+layout(set = 1, binding = 4) uniform sampler2D uSurface;
 
 layout(location = 0) out vec4 outColor;
 
@@ -173,8 +178,19 @@ void main() {
   if (!gl_FrontFacing) N = -N;
   vec3 V = normalize(frame.cameraPos.xyz - vWorldPos);
 
+  bool painted = pat >= 18;
+  vec4 atlasA = vec4(1.0), atlasS = vec4(0.8, 0.5, 0.0, 0.5);
+  if (painted) {
+    atlasA = texture(uAlbedo, vUV);
+    atlasS = texture(uSurface, vUV);
+    vec2 nxy = vec2(atlasS.a, atlasS.g) * 2.0 - 1.0;
+    vec3 tn = vec3(nxy, sqrt(max(1.0 - dot(nxy, nxy), 0.0)));
+    mat3 tbn = cotangentFrame(N, vWorldPos, vUV);
+    vec3 pn = tbn * tn;
+    if (dot(pn, pn) > 0.0) N = normalize(pn);
+  }
   // bump from pattern height
-  if (pat != 0 && pat != 9 && pat != 14) {
+  if (!painted && pat != 0 && pat != 9 && pat != 14) {
     float e = 0.01;
     float h0 = patternHeight(pat, vUV);
     float hu = patternHeight(pat, vUV + vec2(e, 0.0));
@@ -185,14 +201,15 @@ void main() {
     if (dot(pn, pn) > 0.0) N = normalize(pn);
   }
 
-  vec3 base = vColor.rgb;
+  vec3 base = painted ? atlasA.rgb * vColor.rgb : vColor.rgb;
+  float teamMask = painted ? atlasA.a : vColor.a;
   int team = int(vInst.x + 0.5);
   vec3 tc = frame.teamColors[team].rgb;
-  base = mix(base, tc * (0.6 + 0.4 * dot(base, vec3(0.3, 0.5, 0.2)) / 0.35), vColor.a);
-  vec4 pc = patternColor(pat, vUV, vObjPos, N);
+  base = mix(base, tc * (0.6 + 0.4 * dot(base, vec3(0.3, 0.5, 0.2)) / 0.35), teamMask);
+  vec4 pc = painted ? vec4(1.0) : patternColor(pat, vUV, vObjPos, N);
   vec3 albedo = base * pc.rgb;
-  float rough = clamp(vMat.x * pc.a, 0.04, 1.0);
-  float metal = vMat.y;
+  float rough = painted ? clamp(atlasS.r, 0.04, 1.0) : clamp(vMat.x * pc.a, 0.04, 1.0);
+  float metal = painted ? atlasS.b : vMat.y;
   float ao = vExtra.x;
 
   // ---- elemental status (per instance) + ground effects creeping up from below
@@ -211,6 +228,18 @@ void main() {
 
   float shadow = sampleShadow(uShadow, vWorldPos, N);
   vec3 col = shadeSurface(albedo, rough, metal, N, V, ao, shadow);
+  if (pat == 19) {
+    // skin: light scattered under the surface warms and softens the terminator
+    float ndl = dot(N, frame.sunDir.xyz);
+    float sss = smoothstep(-0.35, 0.25, ndl) * (1.0 - smoothstep(0.25, 0.8, ndl));
+    col += albedo * vec3(0.95, 0.32, 0.2) * frame.sunColor.rgb * frame.sunDir.w * sss * 0.22 * mix(0.55, 1.0, shadow);
+    float back = pow(clamp(1.0 - max(dot(N, V), 0.0), 0.0, 1.0), 3.0);
+    col += albedo * vec3(1.0, 0.45, 0.35) * back * 0.08 * frame.skyColor.w;
+  } else if (pat == 21) {
+    // eyes: a sharp wet highlight
+    vec3 H = normalize(frame.sunDir.xyz + V);
+    col += frame.sunColor.rgb * pow(max(dot(N, H), 0.0), 400.0) * 1.5 * shadow;
+  }
   col += albedo * pointLights(vWorldPos, N) * ao;
   if (frost > 0.01) {
     float rimF = pow(1.0 - max(dot(N, V), 0.0), 3.0);

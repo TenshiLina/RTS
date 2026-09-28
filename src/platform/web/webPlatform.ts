@@ -322,6 +322,10 @@ export class WebPlatform implements Platform {
     }
     return r.arrayBuffer();
   }
+  async decodeImage(bytes: Uint8Array, mime: string) {
+    const bmp = await createImageBitmap(new Blob([bytes as BlobPart], { type: mime }), { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
+    return { width: bmp.width, height: bmp.height, source: bmp };
+  }
   async loadText(path: string) {
     const r = await fetch(this.base + path);
     if (!r.ok) throw new Error(`load ${path}: ${r.status}`);
