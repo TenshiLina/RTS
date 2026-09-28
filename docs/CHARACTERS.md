@@ -1,4 +1,4 @@
-# Characters — the humanoid system (v2, in review)
+# Characters — the humanoid system (v2, published; v3 in progress)
 
 Checkpoint before this work: `pre-humanoid-detail` (see [CHECKPOINTS.md](CHECKPOINTS.md)).
 
