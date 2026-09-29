@@ -459,7 +459,7 @@ export function figure5SDF(refName = 'human-female'): Figure5 {
   // shoulder: the acromion's bar at the top of the shoulder, the deltoid cap wrapping the joint
   // and following the arm's slope (its outer curve is the sheet's shoulder outline), the clavicle
   // as a low ridge from the sternum out to the acromion
-  const acromion = capsule([0.1, 1.391, -0.014], [0.14, 1.381, -0.01], 0.0125);
+  const acromion = capsule([0.1, 1.389, -0.014], [0.14, 1.376, -0.01], 0.0125);
   const dC: V3 = [0.151, 1.34, -0.009];
   const deltoid = rotated(ellipsoid(dC, [0.029, 0.052, 0.039]), [0, 0, 20], dC);
   // the clavicle rides the chest's surface (its centre 4 mm under the skin): an S from the
@@ -507,8 +507,8 @@ export function figure5SDF(refName = 'human-female'): Figure5 {
   const bodyLegs = trunk;
   const withFeet = blend(0.025, bodyLegs, feet);
   const withArms = blend(0.022, blend(0.008, withFeet, clavicles), arms);
-  const f = blend(0.018, withArms, boxed(head, [-0.12, 1.4, -0.13], [0.12, 1.72, 0.16]));
-  const headNeck = blend(0.018, torso, head);
+  const f = blend(0.026, withArms, boxed(head, [-0.12, 1.4, -0.13], [0.12, 1.72, 0.16]));
+  const headNeck = blend(0.026, torso, head);
 
   const armC = (y: number): V3 => {
     const [xc] = span(aW, y), [zm] = span(aD, Math.min(1.22, y));
@@ -573,9 +573,9 @@ export function head5Block(refName = 'human-female') {
   // …and the face mass's front, which is smooth below the nose: the lips over the teeth's arch and
   // the chin stand out from it only near the midline (as local forms, below), so they do not drag
   // the whole slice — cheeks and all — forward and back with them
-  const zfK = spline([[DOME + 0.05, 0.113], [DOME + 0.02, 0.113], [0.04, 0.113], [0.03, 0.1155], [0.019, 0.1168], [0.01, 0.1135], [0.0, 0.1105], [-0.015, 0.1092], [-0.03, 0.1075], [-0.045, 0.1055], [-0.06, 0.1035], [-0.075, 0.1015], [-0.088, 0.0995], [-0.097, 0.0965], [-0.105, 0.088], [-0.12, 0.066], [-0.14, 0.05]]);
+  const zfK = spline([[DOME + 0.05, 0.113], [DOME + 0.02, 0.113], [0.04, 0.113], [0.03, 0.1155], [0.019, 0.1168], [0.01, 0.1135], [0.0, 0.1105], [-0.015, 0.1092], [-0.03, 0.1075], [-0.045, 0.1055], [-0.06, 0.1035], [-0.075, 0.1018], [-0.085, 0.1015], [-0.093, 0.1005], [-0.1, 0.0965], [-0.106, 0.088], [-0.12, 0.066], [-0.14, 0.05]]);
   // midline forms: how far the profile stands in front of the mass, and how wide (half-width)
-  const muzzleW = spline([[-0.035, 0.03], [-0.06, 0.029], [-0.075, 0.026], [-0.09, 0.021], [-0.1, 0.019]]);
+  const muzzleW = spline([[-0.035, 0.03], [-0.06, 0.029], [-0.075, 0.027], [-0.09, 0.025], [-0.1, 0.024]]);
   const zbK = spline([[DOME + 0.05, -0.066], [DOME + 0.02, -0.067], [0.04, -0.067], [0.0, -0.066], [-0.02, -0.062], [-0.04, -0.055], [-0.06, -0.047], [-0.08, -0.042], [-0.14, -0.042]]);
   const czK = spline([[DOME + 0.05, -0.004], [0.04, -0.004], [0.0, 0.0], [-0.04, 0.006], [-0.07, 0.014], [-0.1, 0.02], [-0.14, 0.02]]);
   // the cranium (widest above the ears) narrows over the temples into the face outline below
@@ -614,7 +614,7 @@ export function head5Block(refName = 'human-female') {
   // set lower by the amount the border's rounding lifts the visible edge (measured: most under the
   // flat of the chin, least along the sloping jaw).
   const JAW: [number, number][] = loadJson(refJsonPath(`${refName}-face`)).jaw;
-  const lift = spline([[0, 0.005], [0.0125, 0.0038], [0.02, 0.0023], [0.03, 0.0008], [0.035, 0.0006], [0.045, 0.0018], [0.05, 0.0025], [0.055, 0.0047], [0.0575, 0.0066]]);
+  const lift = spline([[0, 0.0097], [0.0125, 0.0076], [0.02, 0.0057], [0.03, 0.0052], [0.035, 0.0061], [0.045, 0.0061], [0.05, 0.0077], [0.055, 0.0125], [0.0575, 0.0173]]);
   // (beyond the angle the border does not continue: the face above the angle is not cut)
   const borderY = spline([...JAW.map(([x, y]) => [x, y - lift(x)] as [number, number]), [0.062, -0.068], [0.075, -0.072]]);
   const borderZ = spline([[0, 0.09], [0.013, 0.086], [0.028, 0.073], [0.039, 0.059], [0.047, 0.045], [0.053, 0.031], [0.058, 0.018], [0.064, 0.004], [0.075, -0.01]]);
@@ -633,7 +633,7 @@ export function head5Block(refName = 'human-female') {
   const rLen = Math.hypot(rB[0] - rA[0], rB[1] - rA[1]);
   const ramus = (y: number, z: number) => ((rB[0] - rA[0]) * (z - rA[1]) - (rB[1] - rA[1]) * (y - rA[0])) / rLen;
   const skullBase = (y: number) => -0.036 - y;
-  const skull: SDF = (x, y, z) => smax(loft(x, y, z), smax(jawCut(x, y, z), smin(-ramus(y, z), skullBase(y), 0.012), 0.01), 0.009);
+  const skull: SDF = (x, y, z) => smax(loft(x, y, z), smax(jawCut(x, y, z), smin(-ramus(y, z), skullBase(y), 0.02), 0.012), 0.017);
 
   // nose wedge: slices whose apex follows the nose's profile
   const ridge = spline([[0.024, 0.104], [0.012, 0.1152], [0.0, 0.1178], [-0.015, 0.1212], [-0.027, 0.1258], [-0.034, 0.128], [-0.038, 0.1272], [-0.041, 0.1225], [-0.043, 0.1165], [-0.046, 0.111]]);
