@@ -2,6 +2,10 @@
 # macro: race/sex/age and proportions
 macrodetails/asian-female-young
 macrodetails/proportions/female-young-averagemuscle-averageweight-idealproportions
+# the face's own macro blend (race and age, head only)
+macrodetails/caucasian-female-young
+macrodetails/caucasian-female-child
+macrodetails/asian-female-child
 # the male macro: its chest is the donor for the chest wall under the bust
 macrodetails/asian-male-young
 macrodetails/proportions/male-young-averagemuscle-averageweight-idealproportions

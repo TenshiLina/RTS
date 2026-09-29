@@ -7,7 +7,7 @@ plus the eyeball helper's centre (the pupil) and extrema of the midline profile.
 
 Coordinates: centimetres relative to the left pupil's height and the midline, x = lateral
 (front view), y = forward-negative depth (profile), z = up. The concept's are measured on the
-sheet's close-ups (front: pupils 1274/1344 at row 282.5; profile: eye 1227.5/715) and scaled so
+sheet's close-ups (front: pupils 1274/1344 at row 282.5; profile: the iris 1227.5/715) and scaled so
 its interpupillary distance equals ours (the proportions are the design; the absolute size is
 ours, which is anthropometric).
 """
@@ -73,19 +73,25 @@ def ref_landmarks(ipd_cm):
 
 
 def all_vertices(targets):
-    """Every vertex (body and helpers) in the Blender frame, as the body is built."""
+    """Every vertex (body and helpers) in the Blender frame, normalised to 1.68 m (the characters
+    build theirs with their own rest_vertices)."""
     return mh.to_blender(mh.morphed(targets), 1.68)
 
 
 def ours(V, pick=None):
     """Our landmarks (cm) from all vertices V (body + helpers): front {name: (x, z)}, profile
-    {name: (y, z)}, relative to the left pupil (eyeball helper centre). The profile points and lid
+    {name: (y, z)}, relative to the left pupil (eyeball helper centre; profile depths from the
+    iris plane). The profile points and lid
     margins are found as extrema; pass pick = ours(V0)[2] (their vertex indices on a reference
     shape) to evaluate them at fixed vertices instead — smooth in the shape, for fitting."""
     g = mh.load_base()['groups']
-    eye = V[sorted(g['helper-l-eye'])].mean(0)
+    EV = V[sorted(g['helper-l-eye'])]
+    eye = EV.mean(0)
     eye_r = V[sorted(g['helper-r-eye'])].mean(0)
     rel = lambda q: (q - [0, eye[1], eye[2]]) * 100
+    # profile depths are taken from the iris plane (what the concept's profile shows of the eye:
+    # the iris at the front of the eyeball, ~3 mm behind the cornea's apex), not the eyeball's centre
+    iris_y = eye[1] - (np.linalg.norm(EV - eye, axis=1).mean() - 0.003)
     fr, pr = {}, {}
     for name, vi in (('mouth_corner', V_MOUTH_CORNER), ('alar', V_ALAR), ('eye_outer', V_EYE_OUTER),
                      ('eye_inner', V_EYE_INNER), ('chin_side', V_CHIN_SIDE), ('cheekbone', V_CHEEKBONE)):
@@ -100,7 +106,7 @@ def ours(V, pick=None):
     first = np.r_[True, np.diff(zb[order]) != 0]
     mi = nidx[order][first]
     mi = mi[np.argsort(-B[mi, 2])]
-    y, z = (B[mi, 1] - eye[1]) * 100, (B[mi, 2] - eye[2]) * 100
+    y, z = (B[mi, 1] - iris_y) * 100, (B[mi, 2] - eye[2]) * 100
     picked = {}
 
     def ext(z0, z1, fn, name=None):
@@ -112,7 +118,7 @@ def ours(V, pick=None):
     if pick is not None:  # at the reference shape's vertices (smooth in the shape, for fitting)
         for k in PROFILE_KEYS:
             vi = pick[k]
-            pr[k] = ((B[vi, 1] - eye[1]) * 100, (B[vi, 2] - eye[2]) * 100)
+            pr[k] = ((B[vi, 1] - iris_y) * 100, (B[vi, 2] - eye[2]) * 100)
     else:
         def put(name, res):
             pr[name], picked[name] = res
@@ -134,6 +140,7 @@ def ours(V, pick=None):
     fr['lip_top'] = (0.0, (B[V_LIP_TOP, 2] - eye[2]) * 100)
     fr['lip_bottom'] = (0.0, (B[V_LIP_BOTTOM, 2] - eye[2]) * 100)
     fr['eye_z_abs'] = eye[2]
+    fr['_ref'] = (eye, iris_y)
     fr['ipd'] = (eye[0] - eye_r[0]) * 100
     # face outline: the front silhouette of the head without the ears, half-width by height
     keep = np.ones(mh.BODY_VERTS, bool)
@@ -156,3 +163,93 @@ def ours(V, pick=None):
     lids.sort(key=lambda q: -q[1])
     fr['lid_upper'], fr['lid_lower'] = lids
     return fr, pr, picked
+
+
+# ---- silhouettes against the backdrop (skin vs the grey background: no shading involved)
+FRONT_BOX, PROFILE_BOX = (1175, 190, 1448, 470), (1180, 620, 1380, 860)
+_skin = None
+
+
+def _skin_mask():
+    global _skin
+    if _skin is None:
+        from PIL import Image
+        im = np.asarray(Image.open(os.path.join(os.path.dirname(__file__), '..', '..', '..',
+                                                'docs/art/factions/human/human-female-turnaround.webp')).convert('RGB')).astype(int)
+        _skin = (im[..., 0] - im[..., 2] > 22) & (im[..., 0] > 110)
+    return _skin
+
+
+def ref_silhouettes(ipd_cm):
+    """The concept's silhouettes in cm: front half-width by height below the ears (the jaw's edge,
+    then the neck's), the profile's front edge by height (nasion to the neck), and the jaw's
+    underside by depth (chin to the neck). Front: relative to the pupils and the midline; profile:
+    to the iris; scaled as ref_landmarks."""
+    m = _skin_mask()
+    f = REF_FRONT
+    s = ipd_cm / (f['pupil_r'][0] - f['pupil_l'][0])
+    zp = f['pupil_l'][1]
+    cx = f['mid_x']
+    front = []
+    for r in range(333, 396):
+        ext = []
+        for sg in (-1, 1):
+            x, gap, last = cx + sg * 30, 0, cx + sg * 30   # (from beyond the mouth's corners: the lips aren't skin-coloured)
+            while abs(x - cx) < 130:
+                x += sg
+                if m[r, x]:
+                    last, gap = x, 0
+                else:
+                    gap += 1
+                    if gap > 5:
+                        break
+            ext.append(abs(last - cx) + 0.5)
+        front.append(((zp - r) * s, max(ext) * s))
+    p = REF_PROFILE
+    sp = ((f['menton'][1] - zp) * s) / (p['menton'][1] - p['eye'][1])
+    ex, ey = p['eye']
+    prof = []
+    for r in range(705, 850):
+        xs = np.where(m[r, 1185:1300])[0]
+        if len(xs):
+            prof.append(((ey - r) * sp, (xs[0] + 1185 - 0.5 - ex) * sp))
+    # the jaw's underside: per column between the chin and the neck's front, the lowest skin row
+    # of the head (scanning down from the chin's height to the first background pixel)
+    neck_x = np.where(m[850, 1185:1300])[0][0] + 1185
+    chin_r = p['menton'][1]
+    under = []
+    for x in range(int(p['pogonion'][0]) + 4, neck_x - 3):
+        col = m[int(chin_r) - 25:860, x]
+        rr = np.where(~col)[0]
+        if len(rr):
+            under.append(((x - ex) * sp, (ey - (rr[0] + int(chin_r) - 25 - 0.5)) * sp))
+    return front, prof, under
+
+
+def our_silhouettes(V, front_z, prof_z, under_y, E=None):
+    """Our silhouettes at the given heights / depths (cm, frames as ours()): front half-width
+    (without the ears), profile front edge, jaw underside (lowest point of the head per depth,
+    in front of the neck)."""
+    from . import measure
+    g = mh.load_base()['groups']
+    EV = V[sorted(g['helper-l-eye'])]
+    eye = EV.mean(0)
+    iris_y = eye[1] - (np.linalg.norm(EV - eye, axis=1).mean() - 0.003)
+    B = V[:mh.BODY_VERTS]
+    if E is None:
+        E = measure.mesh_edges(mh.load_base()['F'])
+    keep = np.ones(len(B), bool)
+    keep[ear_vertices()] = False
+    zs = eye[2] + np.asarray(front_z) / 100
+    fw = [np.abs(q[:, 0]).max() * 100 if len(q) else np.nan for q in measure.sections(B, E, zs, keep)]
+    zs = eye[2] + np.asarray(prof_z) / 100
+    pf = [(q[:, 1].min() - iris_y) * 100 if len(q) else np.nan for q in measure.sections(B, E, zs, keep)]
+    # jaw underside: cut the head by planes y = const (swap axes), take the lowest point in the
+    # jaw's height range
+    Bs = B[:, [0, 2, 1]]
+    ys = iris_y + np.asarray(under_y) / 100
+    un = []
+    for q in measure.sections(Bs, E, ys, keep):
+        q = q[(q[:, 1] < eye[2] - 0.06) & (q[:, 1] > eye[2] - 0.16) & (np.abs(q[:, 0]) < 0.03)]
+        un.append((q[:, 1].min() - eye[2]) * 100 if len(q) else np.nan)
+    return np.array(fw), np.array(pf), np.array(un)

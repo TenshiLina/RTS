@@ -23,7 +23,12 @@ cols = {}
 for label, over in spec['variants'].items():
     p = woman.params()
     for sect, vals in over.items():
-        p.setdefault(sect, {}).update(copy.deepcopy(vals))
+        if isinstance(vals, dict):
+            p.setdefault(sect, {}).update(copy.deepcopy(vals))
+        else:
+            p[sect] = vals
+    if not p.get('eye_depth'):
+        p['sculpt'] = [q for q in p.get('sculpt', []) if not q['name'].startswith('eye sockets')]
     bpy.ops.wm.read_factory_settings(use_empty=True)
     body, arm = woman.build(p)
     body.data.materials.append(review.studio())

@@ -49,8 +49,15 @@ def params():
         p['sculpt'] = saved.get('sculpt', [])
         p['sheet_offset'] = saved.get('sheet_offset', [0.0, 0.0])
         p['bust'] = saved.get('bust')
+        p['eye_depth'] = saved.get('eye_depth', 0.0)
+        p['face'] = saved.get('face', {})
     return p
 
+
+# the body's scale is set by the neck's base (MakeHuman's neck joint) at the height it has in the
+# fitted 1.68 m figure, not by the vertex: the head's shape (fitted to the concept's face) then
+# leaves the body's fit alone, and the vertex lands where the face fit puts it (~1.68)
+SCALE_REF = ('joint-neck', 1.4226)
 
 MALE = {
     'macrodetails/asian-male-young': 1.0,
@@ -58,13 +65,34 @@ MALE = {
 }
 
 
+def face_regional(p):
+    """The head's own macro blend (p['face']: race fractions and a child fraction for youth),
+    as a head-only delta from the body's macro."""
+    f = p.get('face') or {}
+    cau, kid = f.get('caucasian', 0.0), f.get('child', 0.0)
+    if not (cau or kid):
+        return None
+    t = {}
+    for race, rw in (('asian', 1 - cau), ('caucasian', cau)):
+        t[f'macrodetails/{race}-female-young'] = t.get(f'macrodetails/{race}-female-young', 0) + rw * (1 - kid)
+        t[f'macrodetails/{race}-female-child'] = rw * kid
+    t['macrodetails/asian-female-young'] -= 1.0   # (the body's)
+    return [(t, mh.region_weights('head'))]
+
+
+def rest_vertices(p, male=False):
+    """All vertices (body + helpers), rest pose, Blender frame: the macro, the head's own macro
+    blend, the modifiers."""
+    t = dict(MALE) if male else {**TARGETS, **mh.breast_targets(p['breast']['size'], p['breast']['firmness'])}
+    t.update(mh.modifier_targets(p['modifiers']))
+    return mh.to_blender(mh.morphed(t, None if male else face_regional(p)), 1.68, SCALE_REF)
+
+
 def body_vertices(p, skin=None, male=False):
     """The body's vertices (Blender frame) before the shape layers: modifiers, then — given
     skin = (W, M) from posed_skin() — the pose, by linear blend skinning as Blender does.
     male: the same with MakeHuman's male macro (the donor of the chest wall under the bust)."""
-    t = dict(MALE) if male else {**TARGETS, **mh.breast_targets(p['breast']['size'], p['breast']['firmness'])}
-    t.update(mh.modifier_targets(p['modifiers']))
-    V = mh.to_blender(mh.morphed(t), 1.68)[:mh.BODY_VERTS]
+    V = rest_vertices(p, male)[:mh.BODY_VERTS]
     if skin:
         V = mh.lbs(V, *skin)
         V[:, 2] -= V[:, 2].min()  # grounded, as build() does
@@ -76,7 +104,8 @@ def posed_skin(p):
     matrices hold for nearby modifier values, whose joints barely move)."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     body, arm = mh.build_human(targets={**TARGETS, **mh.breast_targets(p['breast']['size'], p['breast']['firmness'])},
-                               modifiers=p['modifiers'], height=1.68, name='woman')
+                               modifiers=p['modifiers'], height=1.68, name='woman', regional=face_regional(p),
+                               ref=SCALE_REF)
     pose(arm, p['pose'])
     return mh.skin_weights(body, arm), mh.skin_matrices(arm)
 
@@ -192,7 +221,8 @@ def build(p=None, bake=True):
     fitting the pose)."""
     p = p or params()
     targets = {**TARGETS, **mh.breast_targets(p['breast']['size'], p['breast']['firmness'])}
-    body, arm = mh.build_human(targets=targets, modifiers=p['modifiers'], height=1.68, name='woman')
+    body, arm = mh.build_human(targets=targets, modifiers=p['modifiers'], height=1.68, name='woman',
+                               regional=face_regional(p), ref=SCALE_REF)
     pose(arm, p['pose'])
     ground(body, arm)
     if not bake:
@@ -241,12 +271,12 @@ def eye_material():
 def add_eyes(arm, targets, p):
     """Eyeballs where MakeHuman's eye helpers are (the head is not posed, so the rest positions
     hold), parented to the head bone."""
-    V = mh.to_blender(mh.morphed({**targets, **mh.modifier_targets(p['modifiers'])}), 1.68)
+    V = rest_vertices(p)
     g = mh.load_base()['groups']
     mat = eye_material()
     for side in ('l', 'r'):
         E = V[sorted(g[f'helper-{side}-eye'])]
-        c = E.mean(0)
+        c = E.mean(0) + np.array([0.0, p.get('eye_depth', 0.0), 0.0])  # set back with the socket stroke
         r = float(np.linalg.norm(E - c, axis=1).mean())
         me = bpy.data.meshes.new(f'eye.{side}')
         import bmesh
@@ -266,3 +296,11 @@ def add_eyes(arm, targets, p):
         ob.parent_bone = 'head'
         bpy.context.view_layer.update()
         ob.matrix_world = mw
+
+
+def iris_forward():
+    """How far the iris plane is in front of the eyeball's centre (m): the eye helper's mean
+    radius less 3 mm (as lib/face.py)."""
+    V = mh.to_blender(mh.load_base()['V'], 1.68)
+    E = V[sorted(mh.load_base()['groups']['helper-l-eye'])]
+    return float(np.linalg.norm(E - E.mean(0), axis=1).mean() - 0.003)

@@ -65,15 +65,59 @@ def read_target(path):
     return _targets[path]
 
 
-def morphed(targets):
-    """Base vertices with targets applied: {'group/name': weight} (paths under data/targets)."""
+def morphed(targets, regional=None):
+    """Base vertices with targets applied: {'group/name': weight} (paths under data/targets).
+    regional: [(targets, per-vertex weights)] applied only where the weights are (a head-only
+    macro blend, say)."""
     V = load_base()['V'].copy()
     for name, w in targets.items():
         if not w:
             continue
         i, d = read_target(os.path.join(MH, 'targets', name + '.target'))
         V[i] += w * d
+    for tg, wv in regional or []:
+        # the region's shape only: each target's displacement less its mean over the region's
+        # fade-out band (the upper neck, for the head), so the region is reshaped in place — a
+        # race macro also changes the body's height, which would lift the whole head
+        band = np.where((wv > 0.2) & (wv < 0.8))[0]
+        for name, w in tg.items():
+            if not w:
+                continue
+            i, d = read_target(os.path.join(MH, 'targets', name + '.target'))
+            D = np.zeros_like(V)
+            D[i] = d
+            D -= D[band].mean(0)
+            m = wv > 0
+            V[m] += (w * wv[m])[:, None] * D[m]
     return V
+
+
+_region = {}
+
+
+def region_weights(root='head'):
+    """Per-vertex weight (all vertices) of the skeleton's subtree at `root`: the sum of the skin
+    weights of its bones, so the region fades out as the skinning does (the neck, for the head);
+    the helpers of the head (eyes, lashes, teeth, tongue) are fully in."""
+    if root not in _region:
+        sk = json.load(open(os.path.join(MH, 'default.mhskel')))['bones']
+        sub, todo = set(), [root]
+        while todo:
+            b = todo.pop()
+            sub.add(b)
+            todo += [n for n, v in sk.items() if v['parent'] == b]
+        W = json.load(open(os.path.join(MH, 'default_weights.mhw')))['weights']
+        base = load_base()
+        w = np.zeros(len(base['V']))
+        for b in sub:
+            for i, x in W.get(b, []):
+                w[i] += x
+        if root == 'head':
+            for g, idx in base['groups'].items():
+                if any(k in g for k in ('-eye', 'eyelashes', 'teeth', 'tongue')):
+                    w[list(idx)] = 1.0
+        _region[root] = np.clip(w, 0, 1)
+    return _region[root]
 
 
 def modifier_targets(values):
@@ -123,13 +167,18 @@ def breast_targets(size=0.5, firmness=0.5, macro='female-young-averagemuscle-ave
     return out
 
 
-def to_blender(V, height):
+def to_blender(V, height, ref=None):
     """MakeHuman frame (Y-up, decimetres, facing +Z) → Blender (Z-up, metres, facing -Y), scaled
-    so the body is `height` tall with its soles on z = 0."""
+    so the body is `height` tall with its soles on z = 0 — or, with ref = (group name, z), so that
+    group's mean sits at z (a body landmark: the head's shape then leaves the body's scale alone)."""
     B = np.stack([V[:, 0], -V[:, 2], V[:, 1]], axis=1)
     body = B[:BODY_VERTS]
     zmin, zmax = body[:, 2].min(), body[:, 2].max()
-    s = height / (zmax - zmin)
+    if ref:
+        zr = B[sorted(load_base()['groups'][ref[0]]), 2].mean()
+        s = ref[1] / (zr - zmin)
+    else:
+        s = height / (zmax - zmin)
     B = B * s
     B[:, 2] -= zmin * s
     to_blender.scale = s
@@ -168,13 +217,13 @@ def set_modifier_keys(ob, values):
         ob.data.shape_keys.key_blocks[f'{key}:+'].value = max(0.0, v)
 
 
-def build_human(targets=None, modifiers=None, height=1.68, name='human', rig=True, shape=None):
+def build_human(targets=None, modifiers=None, height=1.68, name='human', rig=True, shape=None, regional=None, ref=None):
     """shape: optional V -> V applied to the morphed body (Blender frame) before the mesh and the
     rig are built (sculpt layers)."""
     base = load_base()
     tw = dict(targets or {})
     tw.update(modifier_targets(modifiers or {}))
-    V = to_blender(morphed(tw), height)
+    V = to_blender(morphed(tw, regional), height, ref)
     if shape:
         V = V.copy()
         V[:BODY_VERTS] = shape(V[:BODY_VERTS])

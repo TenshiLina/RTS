@@ -83,8 +83,9 @@ def smooth_curve(zg, zs, r, sigma, taper):
 
 
 def grab(V, ops):
-    """Gaussian grab-brush strokes: each op {'c': centre, 'r': radii (x, y, z), 'd': displacement,
-    'mirror': bool (default True: also at x → -x with dx negated)}; metres. Strokes are applied in
+    """Grab-brush strokes: each op {'c': centre, 'r': radii (x, y, z), 'd': displacement,
+    'mirror': bool (default True: also at x → -x with dx negated), 'p': falloff exponent (2
+    Gaussian, default; 4 flat-topped)}; metres. Strokes are applied in
     order, each on the result of the previous."""
     V = V.copy()
     for op in ops or []:
@@ -92,8 +93,9 @@ def grab(V, ops):
         cs = [(c, d)]
         if op.get('mirror', True) and abs(c[0]) > 1e-6:
             cs.append((c * [-1, 1, 1], d * [-1, 1, 1]))
+        k = op.get('p', 2)  # falloff exponent: 2 Gaussian, 4 flat-topped
         for cc, dd in cs:
-            w = np.exp(-0.5 * (((V - cc) / r) ** 2).sum(1))
+            w = np.exp(-0.5 * (((V - cc) / r) ** 2).sum(1) ** (k / 2))
             V += w[:, None] * dd
     return V
 

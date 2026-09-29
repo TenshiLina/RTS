@@ -41,16 +41,15 @@ neck_row = int(round(review.REF['views']['front']['sole'] - 1.45 / review.S))
 scores = compose.sheet(parts, os.path.join(OUT, 'sheet.png'), head_row=neck_row)
 print('IoU (below the neck):', ' '.join(f'{n}={s:.3f}' for n, s in scores))
 
-# face close-ups: eyes from the skeleton, chin from the mesh
+# face close-ups: eyes from the eyeballs, chin from the mesh
 bpy.context.view_layer.update()
-pl, pr = arm.pose.bones['eye.L'], arm.pose.bones['eye.R']
-eye_l = arm.matrix_world @ pl.head
-eye_r = arm.matrix_world @ pr.head
+eye_l = bpy.data.objects['eye.l'].matrix_world.translation.copy()   # (the eyeballs, set in their sockets)
+eye_r = bpy.data.objects['eye.r'].matrix_world.translation.copy()
 ev = body.evaluated_get(bpy.context.evaluated_depsgraph_get())
 m = ev.to_mesh()
 mid = (eye_l + eye_r) / 2
 chin = min((ev.matrix_world @ v.co).z for v in m.vertices if abs((ev.matrix_world @ v.co).x) < 0.004 and (ev.matrix_world @ v.co).y < mid.y + 0.02 and mid.z - 0.16 < (ev.matrix_world @ v.co).z < mid.z - 0.05)
 ev.to_mesh_clear()
-parts = review.faces(os.path.join(OUT, 'faces'), eye_l, eye_r, chin)
+parts = review.faces(os.path.join(OUT, 'faces'), eye_l, eye_r, chin, iris_forward=woman.iris_forward())
 compose.faces(parts, os.path.join(OUT, 'faces.png'))
 print('done', OUT)
