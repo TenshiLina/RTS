@@ -1,6 +1,25 @@
-# Characters — the humanoid system (v2, published; v3 in progress)
+# Characters — the humanoid system (v2, published; v5 in progress)
 
 Checkpoint before this work: `pre-humanoid-detail` (see [CHECKPOINTS.md](CHECKPOINTS.md)).
+
+## v5: fitted to the faction's concept art (in progress, not in the game)
+
+The design target is the concept sheet in `docs/art/factions/human/` (see its README). The base
+figure is built against it measurably, coarse to fine, with a review after each step:
+
+1. **Block-in** (`recipes/figure5.ts`): body, neck, head, simple hair mass — big masses only.
+   `ref/sheet.py` segments the sheet's silhouettes and writes each view's runs per pixel row
+   (`ref/human-female.json`, 1.812 mm/px for a 1.68 m figure); torso, legs and arms are lofts
+   sampled straight from those front and side profiles, with anatomy filling what the sheet
+   hides (torso behind the arms, ribcage behind the bust, skull under the hair).
+2. **Face structure** — then eyes, nose, mouth, ears — reviewed in untextured clay.
+3. **Hair system and materials.**
+4. **Male figure and the existing units** (the unit freeze holds until then).
+
+Review: `npx tsx tools/assetgen/dev/figureSheet.ts out.png` meshes the figure once (cached) and
+draws it in the sheet's front / side / back / ¾ views at the sheet's pixel scale (`sdf/raster.ts`),
+beside the reference and with both outlines overlaid, scoring each view's silhouette overlap (IoU);
+the ¾ view's turn and centre are searched. Close-ups are ray-marched (`sdf/preview.ts`).
 
 ## Engine
 

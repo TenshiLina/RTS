@@ -10,5 +10,8 @@ facial structure and features, hair, and the level of realism — believable, ge
 anatomy that is attractive and never uncanny. Models are reviewed side by side against this sheet,
 in the same views.
 
+The hairstyle (a braided bun) is one example only: units get their own hairstyles and slight
+variations in face and build, all within this standard of realism and appeal.
+
 Warcraft III Reforged is only a minimum quality bar (nothing we ship should look worse); it is
 not an art direction to copy.
