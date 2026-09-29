@@ -6,3 +6,5 @@ public/assets/models/
 .DS_Store
 /screenshots/tmp/
 tools/assetgen/.cache/
+# Blender scratch output
+tools/blender/out/
