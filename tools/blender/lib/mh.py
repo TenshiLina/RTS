@@ -93,6 +93,19 @@ def modifier_targets(values):
     return out
 
 
+def breast_targets(size=0.5, firmness=0.5, macro='female-young-averagemuscle-averageweight'):
+    """MakeHuman's BreastSize/BreastFirmness macro modifiers (0..1, 0.5 = the macro's own breast):
+    weights of the cup × firmness targets, each axis blending min–average–max linearly."""
+    def axis(v):
+        return {'min': max(0.0, 1 - 2 * v), 'max': max(0.0, 2 * v - 1), 'average': 1 - abs(2 * v - 1)}
+    out = {}
+    for c, wc in axis(size).items():
+        for f, wf in axis(firmness).items():
+            if wc * wf > 1e-6 and not (c == f == 'average'):
+                out[f'breast/{macro}-{c}cup-{f}firmness'] = wc * wf
+    return out
+
+
 def to_blender(V, height):
     """MakeHuman frame (Y-up, decimetres, facing +Z) → Blender (Z-up, metres, facing -Y), scaled
     so the body is `height` tall with its soles on z = 0."""
@@ -102,14 +115,52 @@ def to_blender(V, height):
     s = height / (zmax - zmin)
     B = B * s
     B[:, 2] -= zmin * s
+    to_blender.scale = s
     return B
 
 
-def build_human(targets=None, modifiers=None, height=1.68, name='human', rig=True):
+def delta_to_blender(d, s):
+    """A target's offsets in the Blender frame at scale s."""
+    return np.stack([d[:, 0], -d[:, 2], d[:, 1]], axis=1) * s
+
+
+def add_modifier_keys(ob, names):
+    """Shape keys '<modifier>:-' and '<modifier>:+' for fitting modifiers interactively (their
+    values are the modifier's negative/positive weights)."""
+    s = ob['mh_scale']
+    if not ob.data.shape_keys:
+        ob.shape_key_add(name='Basis')
+    n = len(ob.data.vertices)
+    for key in names:
+        for sign, v in (('-', -1), ('+', 1)):
+            k = ob.shape_key_add(name=f'{key}:{sign}', from_mix=False)
+            co = np.empty(n * 3)
+            k.data.foreach_get('co', co)
+            co = co.reshape(-1, 3)
+            for tname, w in modifier_targets({key: v}).items():
+                i, d = read_target(os.path.join(MH, 'targets', tname + '.target'))
+                m = i < n
+                co[i[m]] += delta_to_blender(d[m], s) * w
+            k.data.foreach_set('co', co.ravel())
+            k.value = 0.0
+
+
+def set_modifier_keys(ob, values):
+    for key, v in values.items():
+        ob.data.shape_keys.key_blocks[f'{key}:-'].value = max(0.0, -v)
+        ob.data.shape_keys.key_blocks[f'{key}:+'].value = max(0.0, v)
+
+
+def build_human(targets=None, modifiers=None, height=1.68, name='human', rig=True, shape=None):
+    """shape: optional V -> V applied to the morphed body (Blender frame) before the mesh and the
+    rig are built (sculpt layers)."""
     base = load_base()
     tw = dict(targets or {})
     tw.update(modifier_targets(modifiers or {}))
     V = to_blender(morphed(tw), height)
+    if shape:
+        V = V.copy()
+        V[:BODY_VERTS] = shape(V[:BODY_VERTS])
     # ---- body mesh (with the MakeHuman UVs)
     me = bpy.data.meshes.new(name)
     me.from_pydata([tuple(p) for p in V[:BODY_VERTS]], [], base['F'])
@@ -125,6 +176,7 @@ def build_human(targets=None, modifiers=None, height=1.68, name='human', rig=Tru
     ob = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(ob)
     ob['mh_targets'] = json.dumps(tw)
+    ob['mh_scale'] = to_blender.scale
     if not rig:
         return ob, None
     arm = build_armature(V, name + '_rig')
@@ -211,4 +263,59 @@ def rotate_bone(arm, bone, axis, degrees):
     M = Matrix.Rotation(math.radians(degrees), 4, Vector(axis)) @ M
     M.translation = head
     pb.matrix = M
+    bpy.context.view_layer.update()
+
+
+def skin_weights(body, arm):
+    """Dense (vertices × bones) weight matrix from the body's vertex groups, rows normalised as
+    Blender's armature deform does; bone order = arm.pose.bones."""
+    names = [pb.name for pb in arm.pose.bones]
+    col = {n: j for j, n in enumerate(names)}
+    gi = {g.index: col.get(g.name) for g in body.vertex_groups}
+    W = np.zeros((len(body.data.vertices), len(names)))
+    for v in body.data.vertices:
+        for g in v.groups:
+            j = gi.get(g.group)
+            if j is not None:
+                W[v.index, j] += g.weight
+    s = W.sum(1, keepdims=True)
+    return np.divide(W, s, out=np.zeros_like(W), where=s > 0)
+
+
+def skin_matrices(arm):
+    """Per bone (arm.pose.bones order): the world-space deform matrix posed @ rest⁻¹."""
+    bpy.context.view_layer.update()
+    mw = arm.matrix_world
+    return np.array([np.array(mw @ pb.matrix @ pb.bone.matrix_local.inverted() @ mw.inverted()) for pb in arm.pose.bones])
+
+
+def lbs(V, W, M):
+    """Linear blend skinning of rest vertices V (n×3) with weights W (n×B) and matrices M (B×4×4)."""
+    Vh = np.c_[V, np.ones(len(V))]
+    P = np.einsum('bij,nj->nbi', M[:, :3, :], Vh)  # n × B × 3
+    return np.einsum('nb,nbi->ni', W, P)
+
+
+def bake_pose(body, arm, V=None):
+    """Make the current pose the rest pose: the mesh takes its posed shape (or V, a reshaped posed
+    shape), the armature's pose becomes its rest, and the body is re-bound."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    if V is None:
+        ev = body.evaluated_get(dg)
+        m = ev.to_mesh()
+        V = np.array([ev.matrix_world @ v.co for v in m.vertices])
+        ev.to_mesh_clear()
+    for mod in [m for m in body.modifiers if m.type == 'ARMATURE']:
+        body.modifiers.remove(mod)
+    inv = np.array(body.matrix_world.inverted())
+    Vl = (np.c_[V, np.ones(len(V))] @ inv.T)[:, :3]
+    body.data.vertices.foreach_set('co', Vl.astype(np.float32).ravel())
+    body.data.update()
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode='POSE')
+    bpy.ops.pose.select_all(action='SELECT')
+    bpy.ops.pose.armature_apply(selected=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
+    mod = body.modifiers.new('armature', 'ARMATURE')
+    mod.object = arm
     bpy.context.view_layer.update()

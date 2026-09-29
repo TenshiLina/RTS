@@ -8,3 +8,4 @@ public/assets/models/
 tools/assetgen/.cache/
 # Blender scratch output
 tools/blender/out/
+__pycache__/

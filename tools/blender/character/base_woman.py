@@ -14,53 +14,10 @@ from lib import mh, review, compose
 OUT = os.path.abspath(sys.argv[-1] if len(sys.argv) > 1 else 'out')
 os.makedirs(OUT, exist_ok=True)
 
-# ---- shape: race/sex/age macro, ideal proportions, then per-region modifiers (values −1..1)
-TARGETS = {
-    'macrodetails/asian-female-young': 1.0,
-    'macrodetails/proportions/female-young-averagemuscle-averageweight-idealproportions': 1.0,
-}
-MODIFIERS = {
-    'torso/torso-scale-horiz': -0.5, 'torso/torso-vshape': -0.1,
-    'hip/hip-waist': 0.4, 'hip/hip-scale-depth': 0.3,
-    'buttocks/buttocks-volume': -0.6,
-    'neck/neck-scale-horiz': -0.4,
-    'armslegs/upperarm-scale-horiz': 0.6, 'armslegs/upperarm-scale-vert': -0.2, 'armslegs/lowerarm-scale-horiz': 0.6,
-    'armslegs/upperleg-scale-horiz': -0.2, 'armslegs/upperleg-scale-depth': 0.6,
-    'armslegs/lowerleg-scale-horiz': 0.6, 'armslegs/lowerleg-scale-depth': 0.6, 'armslegs/lowerleg-scale-vert': 0.3,
-}
-if os.environ.get('MODS'):
-    MODIFIERS.update(json.loads(os.environ['MODS']))
-
-# ---- pose: the sheet's A-pose, measured on its front and side views (see tools/assetgen/ref)
-POSE = {
-    # direction of each segment, figure's left side (+X); z up, -Y = forward
-    'upperarm': (0.32, 0.02, -1.0),
-    'lowerarm': (0.46, -0.19, -1.0),
-    'upperleg': (0.047, 0.0, -1.0),
-    'lowerleg': (0.033, 0.0, -1.0),
-}
+from character import woman
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
-body, arm = mh.build_human(targets=TARGETS, modifiers=MODIFIERS, height=1.68, name='woman')
-for side, sg in (('L', 1), ('R', -1)):
-    mir = lambda d: (d[0] * sg, d[1], d[2])
-    for b in ('upperarm01', 'upperarm02'):
-        mh.aim_bone(arm, f'{b}.{side}', mir(POSE['upperarm']))
-    for b in ('lowerarm01', 'lowerarm02', 'wrist'):
-        mh.aim_bone(arm, f'{b}.{side}', mir(POSE['lowerarm']))
-    for b in ('upperleg01', 'upperleg02'):
-        mh.aim_bone(arm, f'{b}.{side}', mir(POSE['upperleg']))
-    for b in ('lowerleg01', 'lowerleg02'):
-        mh.aim_bone(arm, f'{b}.{side}', mir(POSE['lowerleg']))
-bpy.context.view_layer.update()
-
-# feet back on the ground after posing the legs
-dg = bpy.context.evaluated_depsgraph_get()
-ev = body.evaluated_get(dg)
-m = ev.to_mesh()
-zmin = min((ev.matrix_world @ v.co).z for v in m.vertices)
-ev.to_mesh_clear()
-arm.location.z -= zmin
+body, arm = woman.build()
 
 mat = review.studio()
 body.data.materials.append(mat)
@@ -68,7 +25,18 @@ sub = body.modifiers.new('subsurf', 'SUBSURF')
 sub.levels = sub.render_levels = 1
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, 'base_woman.blend'))
 
-parts = review.sheet(os.path.join(OUT, 'sheet'))
+if os.environ.get('HANDS_ONLY'):
+    cam = review._camera(); cam.data.type = 'ORTHO'; cam.data.ortho_scale = 0.32
+    lights = review._rig_lights(None)
+    bpy.context.scene.render.resolution_x, bpy.context.scene.render.resolution_y = 360, 360
+    ev = body.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    hand = arm.matrix_world @ arm.pose.bones['wrist.L'].tail
+    for n, yaw in (('front', 0), ('side', 90), ('q34', 36)):
+        review._place(cam, lights, yaw, hand + Vector((0, 0, -0.03)), 3.0, review.POWER)
+        bpy.context.scene.render.filepath = os.path.join(OUT, f'hand_{n}.png')
+        bpy.ops.render.render(write_still=True)
+    sys.exit(0)
+parts = review.sheet(os.path.join(OUT, 'sheet'), offset=woman.params().get('sheet_offset', (0, 0)))
 neck_row = int(round(review.REF['views']['front']['sole'] - 1.45 / review.S))
 scores = compose.sheet(parts, os.path.join(OUT, 'sheet.png'), head_row=neck_row)
 print('IoU (below the neck):', ' '.join(f'{n}={s:.3f}' for n, s in scores))

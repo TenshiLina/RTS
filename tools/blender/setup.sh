@@ -45,11 +45,9 @@ fetch "$MH_RAW/3dobjs/base.obj" "$MH/base.obj"
 fetch "$MH_RAW/rigs/default.mhskel" "$MH/default.mhskel"
 fetch "$MH_RAW/rigs/default_weights.mhw" "$MH/default_weights.mhw"
 fetch "$MH_RAW/modifiers/modeling_modifiers.json" "$MH/modeling_modifiers.json"
-while read -r t; do
-  [ -z "$t" ] || [ "${t#\#}" != "$t" ] && continue
-  mkdir -p "$MH/targets/$(dirname "$t")"
-  fetch "$MH_RAW/targets/$t.target" "$MH/targets/$t.target"
-done < "$HERE/makehuman-targets.txt"
+# targets: ~500 small files, fetched 12 at a time
+grep -v '^#' "$HERE/makehuman-targets.txt" | grep . | while read -r t; do mkdir -p "$MH/targets/$(dirname "$t")"; echo "$t"; done |
+  MH_RAW="$MH_RAW" MH="$MH" xargs -P 12 -I{} sh -c '[ -s "$MH/targets/{}.target" ] || curl -fsSL --retry 3 -o "$MH/targets/{}.target" "$MH_RAW/targets/{}.target"'
 
 "$TOOLS/blender/bin/python" -c "import bpy; print('bpy', bpy.app.version_string, 'ok')"
 echo "makehuman assets: $(find "$MH" -type f | wc -l) files in $MH"

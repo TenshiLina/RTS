@@ -20,9 +20,12 @@ VIEWS = [  # name, yaw (deg; 0 = front, 90 = from the figure's left), sheet colu
     ('q34', 36, 900, 1190, 18),
 ]
 H = 1000
+POWER = float(os.environ.get('LIGHT_POWER', 260))
 
 
-def studio(clay=(0.58, 0.40, 0.30)):
+def studio(clay=(0.33, 0.19, 0.125)):
+    """Neutral studio: grey world, clay material (linear colour ≈ sRGB 0.62/0.48/0.39), standard
+    view transform so the clay's value reads as authored."""
     sc = bpy.context.scene
     sc.world = bpy.data.worlds.new('studio')
     sc.world.use_nodes = True
@@ -38,7 +41,9 @@ def studio(clay=(0.58, 0.40, 0.30)):
     sc.cycles.device = 'CPU'
     sc.cycles.samples = 64
     sc.cycles.use_denoising = True
-    sc.view_settings.view_transform = 'AgX' if 'AgX' in [i.identifier for i in sc.view_settings.bl_rna.properties['view_transform'].enum_items] else 'Filmic'
+    sc.view_settings.view_transform = 'Standard'
+    sc.view_settings.look = 'None'
+    sc.view_settings.exposure = 0.0
     return mat
 
 
@@ -92,7 +97,9 @@ def _mask_render(path):
     sc.render.engine = eng
 
 
-def sheet(out, samples=48):
+def sheet(out, samples=48, offset=(0.0, 0.0)):
+    """offset: world (x, y) of the point the sheet's views are centred on (the side view's
+    centre line is not our origin)."""
     sc = bpy.context.scene
     cam = _camera()
     cam.data.type = 'ORTHO'
@@ -108,9 +115,9 @@ def sheet(out, samples=48):
         a = math.radians(yaw)
         right = Vector((math.cos(a), math.sin(a), 0))
         off = (w / 2 - (v['cx'] + dx - x0)) * S
-        target = right * off + Vector((0, 0, (v['sole'] - H / 2) * S))
+        target = right * off + Vector((0, 0, (v['sole'] - H / 2) * S)) + Vector((*offset, 0))
         sc.render.resolution_x, sc.render.resolution_y = w, H
-        _place(cam, lights, yaw, target, 5.0, 400)
+        _place(cam, lights, yaw, target, 5.0, POWER)
         t = time.time()
         sc.render.filepath = f'{tmp}/{name}_clay.png'
         bpy.ops.render.render(write_still=True)
@@ -119,6 +126,35 @@ def sheet(out, samples=48):
         meta.append({'name': name, 'x0': x0, 'w': w, 'sole': v['sole']})
     json.dump(meta, open(f'{tmp}/meta.json', 'w'))
     return tmp
+
+
+def region(out, z0, z1, views=('front', 'side', 'q34'), k=4, samples=48, offset=(0.0, 0.0)):
+    """Close-up of a height band (z0..z1 m) in the sheet's views, at k× the sheet's pixel scale,
+    framed exactly like the sheet's crop of that band (so the two can be laid side by side).
+    Returns [(view, png path, sheet box)]."""
+    sc = bpy.context.scene
+    cam = _camera()
+    cam.data.type = 'ORTHO'
+    lights = _rig_lights(None)
+    sc.cycles.samples = samples
+    shots = []
+    for name, yaw, x0, x1, dx in VIEWS:
+        if name not in views:
+            continue
+        v = REF['views'][name]
+        w = x1 - x0
+        r0, r1 = int(round(v['sole'] - z1 / S)), int(round(v['sole'] - z0 / S))
+        a = math.radians(yaw)
+        right = Vector((math.cos(a), math.sin(a), 0))
+        off = (w / 2 - (v['cx'] + dx - x0)) * S
+        target = right * off + Vector((0, 0, (v['sole'] - (r0 + r1) / 2) * S)) + Vector((*offset, 0))
+        cam.data.ortho_scale = max(w, r1 - r0) * S
+        sc.render.resolution_x, sc.render.resolution_y = w * k, (r1 - r0) * k
+        _place(cam, lights, yaw, target, 5.0, POWER)
+        sc.render.filepath = f'{out}_{name}.png'
+        bpy.ops.render.render(write_still=True)
+        shots.append((name, f'{out}_{name}.png', (x0, r0, x1, r1)))
+    return shots
 
 
 def faces(out, eye_l, eye_r, chin_z, samples=96):
@@ -154,7 +190,7 @@ def faces(out, eye_l, eye_r, chin_z, samples=96):
     for name, yaw, target, height, W_, H_, bx in shots:
         cam.data.ortho_scale = max(height, height * W_ / H_)
         sc.render.resolution_x, sc.render.resolution_y = W_, H_
-        _place(cam, lights, yaw, target, 3.0, 400)
+        _place(cam, lights, yaw, target, 3.0, POWER)
         sc.render.filepath = f'{tmp}/{name}.png'
         bpy.ops.render.render(write_still=True)
         meta.append({'name': name, 'box': bx, 'w': W_, 'h': H_})
