@@ -18,8 +18,9 @@ FABRIC = 0.003
 FIT = ['P', 'za', 'zt', 'zb', 'xl', 'e']
 STEP = {'P': 0.002, 'za': 0.004, 'zt': 0.006, 'zb': 0.004, 'xl': 0.004, 'e': 0.05}
 # anatomical ranges for this height: the base from about the 2nd rib (z 1.33-1.36) to the 6th
-# (1.17-1.20), the apex near the 4th intercostal space (1.22-1.25)
-BOUNDS = {'P': (0.02, 0.06), 'za': (1.22, 1.25), 'zt': (1.32, 1.36), 'zb': (1.17, 1.20), 'xl': (0.10, 0.14),
+# (1.17-1.20), the apex near the 4th intercostal space (1.22-1.25); the base from the sternal
+# edge to about the anterior axillary line (lateral reach 12-14 cm)
+BOUNDS = {'P': (0.02, 0.06), 'za': (1.22, 1.25), 'zt': (1.32, 1.36), 'zb': (1.17, 1.20), 'xl': (0.12, 0.14),
           'e': (0.6, 1.5)}
 
 P = woman.params()

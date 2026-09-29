@@ -193,6 +193,7 @@ def faces(out, eye_l, eye_r, chin_z, samples=96):
         _place(cam, lights, yaw, target, 3.0, POWER)
         sc.render.filepath = f'{tmp}/{name}.png'
         bpy.ops.render.render(write_still=True)
+        _mask_render(f'{tmp}/{name}_mask.png')
         meta.append({'name': name, 'box': bx, 'w': W_, 'h': H_})
     json.dump(meta, open(f'{tmp}/faces.json', 'w'))
     return tmp

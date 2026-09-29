@@ -60,6 +60,7 @@ def sheet(parts, out, head_row=None):
 
 
 def faces(parts, out):
+    """Per close-up: concept | ours | the concept with our silhouette (red)."""
     meta = json.load(open(f'{parts}/faces.json'))
     im = Image.open(SHEET).convert('RGB')
     tiles = []
@@ -67,6 +68,14 @@ def faces(parts, out):
         ref = im.crop(tuple(m['box'])).resize((m['w'], m['h']), Image.LANCZOS)
         ours = Image.open(f'{parts}/{m["name"]}.png').convert('RGB')
         tiles += [ref, ours]
+        mp = f'{parts}/{m["name"]}_mask.png'
+        if os.path.exists(mp):
+            mk = np.asarray(Image.open(mp).convert('RGBA'))[:, :, 3] > 127
+            e = _edge(mk)
+            e = e | np.roll(e, 1, 0) | np.roll(e, 1, 1)
+            ov = (np.asarray(ref).astype(float) * 0.75 + 30).astype(np.uint8)
+            ov[e] = [255, 40, 40]
+            tiles.append(Image.fromarray(ov))
     Hh = max(t.height for t in tiles)
     out_im = Image.new('RGB', (sum(t.width for t in tiles) + 6 * len(tiles), Hh), (30, 30, 30))
     x = 0

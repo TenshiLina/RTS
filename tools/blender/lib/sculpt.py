@@ -174,9 +174,12 @@ def neighbours(F):
     return _nbrs[key]
 
 
-def smooth(V, F, idx, iters=10, lam=0.5):
-    """Laplacian (umbrella) smoothing of the vertices idx, neighbours from the polygons F."""
+def smooth(V, F, idx, iters=10, lam=0.5, normal_only=False):
+    """Laplacian (umbrella) smoothing of the vertices idx, neighbours from the polygons F.
+    normal_only: move along the (smoothed) surface normal only — bumps flatten while the vertices
+    keep their spacing (umbrella steps drag dense rings sideways, pinching the surface)."""
     E = neighbours(F)
+    N = smooth_normals(V, F) if normal_only else None
     V = V.copy()
     n = V.shape[0]
     sel = np.zeros(n, bool)
@@ -187,7 +190,10 @@ def smooth(V, F, idx, iters=10, lam=0.5):
         acc = np.zeros_like(V)
         np.add.at(acc, Es[:, 0], V[Es[:, 1]])
         m = cnt > 0
-        V[m] += lam * (acc[m] / cnt[m, None] - V[m])
+        d = acc[m] / cnt[m, None] - V[m]
+        if N is not None:
+            d = (d * N[m]).sum(1, keepdims=True) * N[m]
+        V[m] += lam * d
     return V
 
 
@@ -234,4 +240,46 @@ def fair(V, F, idx):
     X = np.linalg.solve(Ai, -Ab @ V[S[len(R):]])
     V = V.copy()
     V[R] = X
+    return V
+
+
+def chest_wall(V, F, wb, armw):  # (wb: MakeHuman's breast weights, kept for callers)
+    """Replace MakeHuman's breast mound with the ribcage's continuation: a smooth surface
+    y = f(x², z) (symmetric; polynomial, least squares) fitted to the front of the chest around
+    the mound, the mound's vertices set onto it in depth only (x, z kept, so the mesh's spacing
+    is untouched), blended by the breast weight and faded towards the sides and the back."""
+    n = len(wb)
+    N = smooth_normals(V[:n], F)
+    x, y, z = V[:n, 0], V[:n, 1], V[:n, 2]
+    front = (N[:, 1] < -0.35) & (np.abs(x) < 0.16) & (z > 1.10) & (z < 1.42) & (armw < 0.2)
+    zc = (z - 1.26) / 0.1
+    xx = (x / 0.1) ** 2
+
+    def feats(xx, zc):
+        return np.stack([np.ones_like(xx), xx, xx ** 2, zc, zc ** 2, zc ** 3, xx * zc, xx * zc ** 2, xx ** 2 * zc], 1)
+    # the replaced region: a smooth plateau over the mound and its fold (not the skin weights,
+    # which end within one ring — right at the fold — and leave a crease); faded towards the back
+    plate = np.exp(-((np.abs(x) - 0.085) / 0.06) ** 4 - ((z - 1.225) / 0.075) ** 4)
+    w = plate * _smoothstep(-0.02, -0.06, y) * (1 - armw)
+    fit = front & (plate < 0.05)
+    coef = np.linalg.lstsq(feats(xx[fit], zc[fit]), y[fit], rcond=None)[0]
+    V = V.copy()
+    V[:n, 1] += w * (feats(xx, zc) @ coef - y)
+    # relax the replaced vertices within the new surface (x, z; then back onto it): the mound's
+    # nipple sides collapse onto one spot and its fold's rows are bunched — both show as seams
+    E = neighbours(F)
+    core = np.where(w > 0.2)[0]
+    sel = np.zeros(len(V), bool)
+    sel[core] = True
+    Es = E[sel[E[:, 0]]]
+    cnt = np.bincount(Es[:, 0], minlength=len(V))
+    m = cnt > 0
+    for _ in range(30):
+        acc = np.zeros_like(V)
+        np.add.at(acc, Es[:, 0], V[Es[:, 1]])
+        d = acc[m] / cnt[m, None] - V[m]
+        V[m, 0] += 0.5 * w[m] * d[:, 0]
+        V[m, 2] += 0.5 * w[m] * d[:, 2]
+        xm, zm = (V[m, 0] / 0.1) ** 2, (V[m, 2] - 1.26) / 0.1
+        V[m, 1] += w[m] * (feats(xm, zm) @ coef - V[m, 1])
     return V

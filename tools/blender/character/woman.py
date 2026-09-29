@@ -84,28 +84,21 @@ def posed_skin(p):
 _armw = None
 
 
-def shape_layers(p, skin):
-    """Sculpt layers, applied to the posed body (skin: its weights and pose matrices): the chest
-    wall, the grab strokes, the profile warp, the bust."""
+def shape_layers(p, skin=None):
+    """Sculpt layers, applied to the posed body: the grab strokes, the profile warp, the chest
+    wall, the bust. (skin: unused, kept for the fitters' calls.)"""
     global _armw
     if _armw is None:
         _armw = sculpt.arm_mask(mh)
     F = mh.load_base()['F']
     region, wb = breast_region()
-    donor = body_vertices(p, skin, male=True)
 
     def layers(V):
         # MakeHuman's own breast (even its smallest is a cone with a nipple and a fold) is replaced
-        # by the male macro's chest wall (pectorals over the ribcage), in depth only, blended by
-        # the breast bones' skin weights and aligned where the blend ends: the parametric bust is
-        # then the only form there (a clothed base: no nipples)
-        edge = (wb > 0.02) & (wb < 0.15)
-        dy = donor[:, 1] - V[:, 1]
-        dy -= np.median(dy[edge])
-        V = V.copy()
-        V[:, 1] += np.clip(wb * 1.5, 0, 1) * dy
-        V = sculpt.smooth(V, F, region, iters=8)
+        # by the ribcage's continuation: the parametric bust is the only form there (a clothed
+        # base: no nipples)
         V = sculpt.profile_warp(sculpt.grab(V, p.get('sculpt')), p.get('warp'), _armw)
+        V = sculpt.chest_wall(V, F, wb, _armw)   # (last before the bust: nothing may fold it again)
         return sculpt.bust(V, F, p.get('bust'), _armw)
     return layers
 
@@ -211,4 +204,65 @@ def build(p=None, bake=True):
     ev.to_mesh_clear()
     skin = (mh.skin_weights(body, arm), mh.skin_matrices(arm))
     mh.bake_pose(body, arm, shape_layers(p, skin)(V))
+    add_eyes(arm, targets, p)
     return body, arm
+
+
+def eye_material():
+    """Sclera, limbal ring, iris, pupil by the angle from the eyeball's forward axis (local -Y):
+    the iris ~1.4 cm across (the concept's, large), the pupil ~0.45 cm; glossy (wet)."""
+    mat = bpy.data.materials.get('eye') or bpy.data.materials.new('eye')
+    mat.use_nodes = True
+    nt = mat.node_tree
+    bsdf = nt.nodes['Principled BSDF']
+    bsdf.inputs['Roughness'].default_value = 0.12
+    tc = nt.nodes.new('ShaderNodeTexCoord')
+    sep = nt.nodes.new('ShaderNodeSeparateXYZ')
+    norm = nt.nodes.new('ShaderNodeVectorMath'); norm.operation = 'NORMALIZE'
+    neg = nt.nodes.new('ShaderNodeMath'); neg.operation = 'MULTIPLY'; neg.inputs[1].default_value = -1.0
+    ramp = nt.nodes.new('ShaderNodeValToRGB')
+    nt.links.new(tc.outputs['Object'], norm.inputs[0])
+    nt.links.new(norm.outputs['Vector'], sep.inputs[0])
+    nt.links.new(sep.outputs['Y'], neg.inputs[0])
+    nt.links.new(neg.outputs['Value'], ramp.inputs['Fac'])
+    nt.links.new(ramp.outputs['Color'], bsdf.inputs['Base Color'])
+    cr = ramp.color_ramp
+    stops = [(0.0, (0.72, 0.68, 0.64)), (0.86, (0.70, 0.66, 0.62)), (0.872, (0.05, 0.03, 0.02)),
+             (0.885, (0.12, 0.06, 0.03)), (0.95, (0.26, 0.14, 0.06)), (0.982, (0.10, 0.05, 0.02)),
+             (0.986, (0.01, 0.01, 0.01)), (1.0, (0.0, 0.0, 0.0))]
+    cr.elements[0].position, cr.elements[0].color = stops[0][0], (*stops[0][1], 1)
+    cr.elements[1].position, cr.elements[1].color = stops[-1][0], (*stops[-1][1], 1)
+    for pos, col in stops[1:-1]:
+        e = cr.elements.new(pos)
+        e.color = (*col, 1)
+    return mat
+
+
+def add_eyes(arm, targets, p):
+    """Eyeballs where MakeHuman's eye helpers are (the head is not posed, so the rest positions
+    hold), parented to the head bone."""
+    V = mh.to_blender(mh.morphed({**targets, **mh.modifier_targets(p['modifiers'])}), 1.68)
+    g = mh.load_base()['groups']
+    mat = eye_material()
+    for side in ('l', 'r'):
+        E = V[sorted(g[f'helper-{side}-eye'])]
+        c = E.mean(0)
+        r = float(np.linalg.norm(E - c, axis=1).mean())
+        me = bpy.data.meshes.new(f'eye.{side}')
+        import bmesh
+        bm = bmesh.new()
+        bmesh.ops.create_uvsphere(bm, u_segments=48, v_segments=32, radius=r)
+        bm.to_mesh(me); bm.free()
+        for poly in me.polygons:
+            poly.use_smooth = True
+        ob = bpy.data.objects.new(f'eye.{side}', me)
+        bpy.context.scene.collection.objects.link(ob)
+        ob.data.materials.append(mat)
+        ob.location = Vector(c) + Vector((0, 0, arm.location.z))
+        bpy.context.view_layer.update()
+        mw = ob.matrix_world.copy()
+        ob.parent = arm
+        ob.parent_type = 'BONE'
+        ob.parent_bone = 'head'
+        bpy.context.view_layer.update()
+        ob.matrix_world = mw

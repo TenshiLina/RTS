@@ -22,8 +22,9 @@ from lib import mh, measure, compose, sculpt
 from character import woman
 
 # (not fitted: the neck modifiers, which also move the head; buttocks-volume, whose shape is not
-# the concept's — the warp does that; the belly, which the top hides: kept flat)
-FIT = ['torso/torso-scale-horiz', 'torso/torso-scale-depth', 'torso/torso-vshape',
+# the concept's — the warp does that; the belly, which the top hides: kept flat; the torso's
+# depth, which the clothed side view cannot decide: MakeHuman's own, the floors keep it sane)
+FIT = ['torso/torso-scale-horiz', 'torso/torso-vshape',
        'hip/hip-scale-horiz', 'hip/hip-scale-depth', 'hip/hip-waist',
        'armslegs/upperleg-scale-horiz', 'armslegs/upperleg-scale-depth',
        'armslegs/lowerleg-scale-horiz', 'armslegs/lowerleg-scale-depth',
@@ -33,6 +34,11 @@ WARP_Z = np.round(np.arange(0.05, 1.50, 0.005), 3)
 FABRIC = 0.003          # m, pulled off the concept's edges where clothed
 TOP, SHORTS = (1.00, 1.40), (0.76, 1.02)
 WAIST_FLOOR = (1.04, 1.17, 0.100)   # z range and minimum half-width (m)
+# torso depth (sternum/abdomen to back, m) below the bust, where the concept's front is the top
+# hanging from the bust: a slim woman's underbust and waist — reported (the modifiers and the
+# epigastrium stroke are chosen to meet it), not fitted
+DEPTH_FLOOR = [(1.16, 0.172), (1.14, 0.170), (1.10, 0.158), (1.06, 0.153), (1.02, 0.150), (0.98, 0.150)]
+BUST_ROWS = (1.19, 1.33)  # the front warp is held at 0 here: the chest wall under the bust is the bust fit's
 REG = 5.0               # residual (mm) per unit of modifier
 STEP = 2                # sheet rows between samples
 
@@ -98,12 +104,15 @@ for z, (f, b) in zip(measure.row_z('side', rows), measure.sheet_edges(refm, 'sid
         meas.append(('sf', z, f + a))
     if z <= 1.42:
         meas.append(('sb', z, b - a))
+for z, dmin in DEPTH_FLOOR:
+    meas.append(('sd', z, dmin))
 kinds = np.array([m[0] for m in meas])
 zs = np.array([m[1] for m in meas])
 target = np.array([m[2] for m in meas])
 uz = np.unique(zs)
 
 
+WARPING = False
 SKIN = woman.posed_skin(P)  # the sheet's stance, by skinning (as the build poses the body)
 
 
@@ -126,6 +135,9 @@ def measure_body(vals, warp=None):
             out[i] = p[:, 0].max() - p[:, 0].min() if len(p) else np.nan
         elif k == 'sf':
             out[i] = p[:, 1].min()
+        elif k == 'sd':
+            q = p[np.abs(p[:, 0]) < 0.01]
+            out[i] = q[:, 1].max() - q[:, 1].min() if len(q) else np.nan
         else:
             out[i] = p[:, 1].max()
     return out
@@ -136,12 +148,14 @@ def residual(x, warp=None):
     m = measure_body(vals, warp)
     m = np.where(np.isin(kinds, ('sf', 'sb')), m - x[-1], m)  # the side view's fore-aft offset
     r = (m - target) * 1000  # mm
+    r = np.where(kinds == 'sd', np.minimum(r, 0), r)  # a floor
+    r = np.where(kinds == 'sd', 0.0, r)  # (report only: see DEPTH_FLOOR)
     return np.r_[np.nan_to_num(r), REG * x[:-1]]
 
 
 def report(x, label, warp=None):
     r = residual(x, warp)[:len(meas)]
-    parts = ' '.join(f'{k}={np.sqrt(np.mean(r[kinds == k] ** 2)):.1f}' for k in ('fhw', 'shw', 'lw', 'aw', 'sf', 'sb'))
+    parts = ' '.join(f'{k}={np.sqrt(np.mean(r[kinds == k] ** 2)):.1f}' for k in ('fhw', 'shw', 'lw', 'aw', 'sf', 'sb', 'sd'))
     print(f'{label}: rms {np.sqrt(np.mean(r ** 2)):.2f} mm  [{parts}]  offset {x[-1] * 1000:+.1f} mm', flush=True)
 
 
@@ -172,6 +186,7 @@ for it in range(6):
 print(json.dumps({k: round(float(v), 3) for k, v in zip(FIT, x[:-1])}, indent=1))
 
 # ---- the warp: two passes on the smoothed residuals
+WARPING = True
 warp = {'z': WARP_Z.tolist(), 'front': [0.0] * len(WARP_Z), 'back': [0.0] * len(WARP_Z),
         'width': [1.0] * len(WARP_Z), 'leg': [1.0] * len(WARP_Z)}
 for it in range(3):
@@ -179,24 +194,30 @@ for it in range(3):
     m = measure_body(vals, warp)
     m = np.where(np.isin(kinds, ('sf', 'sb')), m - x[-1], m)
     r = m - target
-    for key, kind, sigma in (('front', 'sf', 0.012), ('back', 'sb', 0.012)):
+    for key, kind, sigma in (('front', 'sf', 0.02), ('back', 'sb', 0.02)):
         sel = (kinds == kind) & np.isfinite(r)
-        c = sculpt.smooth_curve(WARP_Z, zs[sel], -r[sel], sigma, 0.05)
+        zz, rr = zs[sel], -r[sel]
+        if key == 'front':  # held at 0 from the bust down to the shorts (the modifiers' and the
+            # strokes' shape there: a local warp under a hanging top made ledges and lumps)
+            pin = np.arange(BUST_ROWS[0] - 0.30, BUST_ROWS[1], 0.005)
+            zz = np.r_[zz, pin]
+            rr = np.r_[rr, -np.interp(pin, WARP_Z, warp['front'])]
+        c = sculpt.smooth_curve(WARP_Z, zz, rr, sigma, 0.05)
         warp[key] = (np.array(warp[key]) + c).round(5).tolist()
     for key, kind in (('width', 'fhw'), ('leg', 'lw')):
         sel = (kinds == kind) & np.isfinite(r)
-        c = sculpt.smooth_curve(WARP_Z, zs[sel], -r[sel] / m[sel], 0.012, 0.05)
+        c = sculpt.smooth_curve(WARP_Z, zs[sel], -r[sel] / m[sel], 0.02, 0.05)
         warp[key] = (np.array(warp[key]) * (1 + c)).round(5).tolist()
     report(x, f'warp {it + 1}', warp)
 
 # per-row residuals worth a look
 r = residual(x, warp)[:len(meas)]
-for k in ('fhw', 'shw', 'lw', 'aw', 'sf', 'sb'):
+for k in ('fhw', 'shw', 'lw', 'aw', 'sf', 'sb', 'sd'):
     sel = kinds == k
     worst = np.argsort(-np.abs(r * sel))[:4]
     print(k, ' '.join(f'z{zs[i]:.2f}:{r[i]:+.1f}' for i in worst if sel[i]))
 if '--profile' in sys.argv:
-    for k in ('fhw', 'shw', 'lw', 'aw', 'sf', 'sb'):
+    for k in ('fhw', 'shw', 'lw', 'aw', 'sf', 'sb', 'sd'):
         sel = np.where(kinds == k)[0]
         print(k, ' '.join(f'{zs[i]:.2f}:{r[i]:+.0f}' for i in sel[::3]))
 if '--dry' not in sys.argv:

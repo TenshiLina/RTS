@@ -46,7 +46,13 @@ def load_base():
     return _base
 
 
+_targets = {}
+
+
 def read_target(path):
+    """(vertex indices, offsets) of a .target file (cached)."""
+    if path in _targets:
+        return _targets[path]
     idx, d = [], []
     with open(path) as fh:
         for l in fh:
@@ -55,7 +61,8 @@ def read_target(path):
             p = l.split()
             idx.append(int(p[0]))
             d.append([float(p[1]), float(p[2]), float(p[3])])
-    return np.array(idx, dtype=np.int64), np.array(d)
+    _targets[path] = (np.array(idx, dtype=np.int64), np.array(d))
+    return _targets[path]
 
 
 def morphed(targets):
@@ -73,7 +80,8 @@ def modifier_targets(values):
     """Map modifier values (e.g. {'hip/hip-scale-horiz': -0.3}) to target weights: a modifier
     'group/name' with value v uses 'group/name-{min}' for v<0 and 'group/name-{max}' for v>0; the
     min/max words come from modeling_modifiers.json. Modifiers with l-/r- twins are applied to both
-    sides when given without the prefix ('armslegs/upperarm-scale-horiz')."""
+    sides when given without the prefix ('armslegs/upperarm-scale-horiz'). Modifiers that share a
+    name across axes are given as 'group/name-lo|hi' ('nose/nose-trans-down|up')."""
     mods = json.load(open(os.path.join(MH, 'modeling_modifiers.json')))
     ends = {}
     for g in mods:
@@ -85,6 +93,15 @@ def modifier_targets(values):
         if not v:
             continue
         g, name = key.split('/', 1)
+        if '|' in name:  # 'name-lo|hi': modifiers sharing a name across axes (nose-trans-down|up)
+            lohi, hi = name.split('|')
+            base, lo = lohi.rsplit('-', 1)
+            out[f'{g}/{base}-{lo if v < 0 else hi}'] = abs(v)
+            continue
+        if os.path.exists(os.path.join(MH, 'targets', g, name + '.target')):  # one-sided (head-oval)
+            if v > 0:
+                out[f'{g}/{name}'] = v
+            continue
         names = [name] if os.path.exists(os.path.join(MH, 'targets', g, name + '-incr.target')) or (g + '/' + name) in ends else ['l-' + name, 'r-' + name]
         for n in names:
             # (a few target pairs exist without an entry in the modifier list: decr/incr)
