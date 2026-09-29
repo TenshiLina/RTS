@@ -1,8 +1,8 @@
 """The base woman: MakeHuman CC0 base, shaped and posed to the faction's concept sheet.
 
 Build order: MakeHuman macro + modifiers → rig → pose to the sheet's stance → sculpt layers on
-the posed body (grab strokes, profile warp, bust) → that shape and pose become the rest pose.
-Parameters live in woman.json, written by the fitters (fit_shape, fit_posture, fit_bust) and
+the posed body (grab strokes, profile warp) → that shape and pose become the rest pose.
+Parameters live in woman.json, written by the fitters (fit_shape, fit_posture, fit_face) and
 by hand where the silhouettes cannot decide."""
 import json, math, os
 import numpy as np
@@ -48,7 +48,6 @@ def params():
         p['warp'] = saved.get('warp')
         p['sculpt'] = saved.get('sculpt', [])
         p['sheet_offset'] = saved.get('sheet_offset', [0.0, 0.0])
-        p['bust'] = saved.get('bust')
         p['eye_depth'] = saved.get('eye_depth', 0.0)
         p['face'] = saved.get('face', {})
     return p
@@ -58,12 +57,6 @@ def params():
 # fitted 1.68 m figure, not by the vertex: the head's shape (fitted to the concept's face) then
 # leaves the body's fit alone, and the vertex lands where the face fit puts it (~1.68)
 SCALE_REF = ('joint-neck', 1.4226)
-
-MALE = {
-    'macrodetails/asian-male-young': 1.0,
-    'macrodetails/proportions/male-young-averagemuscle-averageweight-idealproportions': 1.0,
-}
-
 
 def face_regional(p):
     """The head's own macro blend (p['face']: race fractions and a child fraction for youth),
@@ -80,19 +73,18 @@ def face_regional(p):
     return [(t, mh.region_weights('head'))]
 
 
-def rest_vertices(p, male=False):
+def rest_vertices(p):
     """All vertices (body + helpers), rest pose, Blender frame: the macro, the head's own macro
     blend, the modifiers."""
-    t = dict(MALE) if male else {**TARGETS, **mh.breast_targets(p['breast']['size'], p['breast']['firmness'])}
+    t = {**TARGETS, **mh.breast_targets(p['breast']['size'], p['breast']['firmness'])}
     t.update(mh.modifier_targets(p['modifiers']))
-    return mh.to_blender(mh.morphed(t, None if male else face_regional(p)), 1.68, SCALE_REF)
+    return mh.to_blender(mh.morphed(t, face_regional(p)), 1.68, SCALE_REF)
 
 
-def body_vertices(p, skin=None, male=False):
+def body_vertices(p, skin=None):
     """The body's vertices (Blender frame) before the shape layers: modifiers, then — given
-    skin = (W, M) from posed_skin() — the pose, by linear blend skinning as Blender does.
-    male: the same with MakeHuman's male macro (the donor of the chest wall under the bust)."""
-    V = rest_vertices(p, male)[:mh.BODY_VERTS]
+    skin = (W, M) from posed_skin() — the pose, by linear blend skinning as Blender does."""
+    V = rest_vertices(p)[:mh.BODY_VERTS]
     if skin:
         V = mh.lbs(V, *skin)
         V[:, 2] -= V[:, 2].min()  # grounded, as build() does
@@ -114,44 +106,12 @@ _armw = None
 
 
 def shape_layers(p, skin=None):
-    """Sculpt layers, applied to the posed body: the grab strokes, the profile warp, the chest
-    wall, the bust. (skin: unused, kept for the fitters' calls.)"""
+    """Sculpt layers, applied to the posed body: the grab strokes, then the profile warp.
+    (skin: unused, kept for the fitters' calls.)"""
     global _armw
     if _armw is None:
         _armw = sculpt.arm_mask(mh)
-    F = mh.load_base()['F']
-    region, wb = breast_region()
-
-    def layers(V):
-        # MakeHuman's own breast (even its smallest is a cone with a nipple and a fold) is replaced
-        # by the ribcage's continuation: the parametric bust is the only form there (a clothed
-        # base: no nipples)
-        V = sculpt.profile_warp(sculpt.grab(V, p.get('sculpt')), p.get('warp'), _armw)
-        V = sculpt.chest_wall(V, F, wb, _armw)   # (last before the bust: nothing may fold it again)
-        return sculpt.bust(V, F, p.get('bust'), _armw)
-    return layers
-
-
-_flat = None
-
-
-def breast_region():
-    """MakeHuman's breast mound: the vertices skinned to its breast bones (and the nipples,
-    whatever their weights), and the per-vertex breast weight (0..1)."""
-    global _flat
-    if _flat is None:
-        W = json.load(open(os.path.join(mh.MH, 'default_weights.mhw')))['weights']
-        wb = np.zeros(mh.BODY_VERTS)
-        for b in ('breast.L', 'breast.R'):
-            for i, w in W.get(b, []):
-                if i < mh.BODY_VERTS:
-                    wb[i] += w
-        idx = set(np.where(wb > 0.15)[0].tolist())
-        for t in ('nipple-point-incr', 'nipple-size-incr'):
-            i, _ = mh.read_target(os.path.join(mh.MH, 'targets', 'breast', t + '.target'))
-            idx.update(int(k) for k in i if k < mh.BODY_VERTS)
-        _flat = (sculpt.grow(mh.load_base()['F'], sorted(idx), 1), np.clip(wb, 0, 1))
-    return _flat
+    return lambda V: sculpt.profile_warp(sculpt.grab(V, p.get('sculpt')), p.get('warp'), _armw)
 
 
 def direction(out_deg, fwd_deg, sign):

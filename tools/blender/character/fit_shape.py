@@ -8,8 +8,8 @@ compared per sheet row with the concept's edges:
   * side view: front and back edges from the gluteal fold to the neck (with a free fore-aft offset,
     since the sheet's side view is not centred on our origin)
 The concept is clothed: its edges are pulled in by a fabric allowance where the tank top and
-shorts cover the body, the side view's front edge is skipped over the bust and the fabric that
-bridges below it (the bust has its own fit), and the waist has an anthropometric floor so the
+shorts cover the body, the side view's front edge is skipped where the top hangs straight down
+from the bust and where the shorts bridge the groin, and the waist has an anthropometric floor so the
 concept's stylised waist is approached, not copied. Gauss-Newton with numerical derivatives,
 mild pull towards MakeHuman's defaults, values clipped to [-1, 1]. Updates woman.json.
 
@@ -22,9 +22,8 @@ from lib import mh, measure, compose, sculpt
 from character import woman
 
 # (not fitted: the neck modifiers, which also move the head; buttocks-volume, whose shape is not
-# the concept's — the warp does that; the belly, which the top hides: kept flat; the torso's
-# depth, which the clothed side view cannot decide: MakeHuman's own, the floors keep it sane)
-FIT = ['torso/torso-scale-horiz', 'torso/torso-vshape',
+# the concept's — the warp does that; the belly, which the top hides: kept flat)
+FIT = ['torso/torso-scale-horiz', 'torso/torso-scale-depth', 'torso/torso-vshape',
        'hip/hip-scale-horiz', 'hip/hip-scale-depth', 'hip/hip-waist',
        'armslegs/upperleg-scale-horiz', 'armslegs/upperleg-scale-depth',
        'armslegs/lowerleg-scale-horiz', 'armslegs/lowerleg-scale-depth',
@@ -38,7 +37,7 @@ WAIST_FLOOR = (1.04, 1.17, 0.100)   # z range and minimum half-width (m)
 # hanging from the bust: a slim woman's underbust and waist — reported (the modifiers and the
 # epigastrium stroke are chosen to meet it), not fitted
 DEPTH_FLOOR = [(1.16, 0.172), (1.14, 0.170), (1.10, 0.158), (1.06, 0.153), (1.02, 0.150), (0.98, 0.150)]
-BUST_ROWS = (1.19, 1.33)  # the front warp is held at 0 here: the chest wall under the bust is the bust fit's
+BUST_ROWS = (1.19, 1.33)  # the front warp is held at 0 from here down: the bust is MakeHuman's own, not the warp's
 REG = 5.0               # residual (mm) per unit of modifier
 STEP = 2                # sheet rows between samples
 
@@ -100,7 +99,7 @@ for z, r in zip(measure.row_z('front', rows), rows):
 rows = ref_rows('side', 0.80, 1.43)  # above the shorts' hem, below the hair at the nape
 for z, (f, b) in zip(measure.row_z('side', rows), measure.sheet_edges(refm, 'side', rows)):
     a = FABRIC if clothed(z) else 0
-    if z >= 1.33:  # (below: the bust, the top hanging straight down from it, the shorts over the groin)
+    if z >= 1.19:  # (below: the top hanging straight down from the bust, the shorts over the groin)
         meas.append(('sf', z, f + a))
     if z <= 1.42:
         meas.append(('sb', z, b - a))

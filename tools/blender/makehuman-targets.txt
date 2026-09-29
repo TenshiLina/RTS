@@ -6,9 +6,6 @@ macrodetails/proportions/female-young-averagemuscle-averageweight-idealproportio
 macrodetails/caucasian-female-young
 macrodetails/caucasian-female-child
 macrodetails/asian-female-child
-# the male macro: its chest is the donor for the chest wall under the bust
-macrodetails/asian-male-young
-macrodetails/proportions/male-young-averagemuscle-averageweight-idealproportions
 # every modifier target of the body and face groups
 head/head-age-decr
 head/head-age-incr
