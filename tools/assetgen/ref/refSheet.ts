@@ -9,7 +9,11 @@ import { fileURLToPath } from 'node:url';
 export type Run = [number, number];
 export interface RefRow {
   y: number;
+  /** the silhouette */
   runs: Run[];
+  /** skin and fitted-clothing pixels within it */
+  skin: Run[];
+  cloth: Run[];
 }
 export interface RefView {
   cx: number;
@@ -30,8 +34,8 @@ export function loadRef(name: string): RefSheet {
 }
 export const refPath = (name: string) => fileURLToPath(new URL(`./${name}.json`, import.meta.url));
 
-/** Runs on the row nearest to height y. */
-export function runsAt(v: RefView, y: number): Run[] {
+/** Runs on the row nearest to height y (silhouette, or its skin or clothing pixels). */
+export function runsAt(v: RefView, y: number, kind: 'runs' | 'skin' | 'cloth' = 'runs'): Run[] {
   const r = v.rows;
   let lo = 0, hi = r.length - 1;
   while (hi - lo > 1) {
@@ -39,7 +43,7 @@ export function runsAt(v: RefView, y: number): Run[] {
     if (r[m].y < y) lo = m;
     else hi = m;
   }
-  return Math.abs(r[lo].y - y) < Math.abs(r[hi].y - y) ? r[lo].runs : r[hi].runs;
+  return (Math.abs(r[lo].y - y) < Math.abs(r[hi].y - y) ? r[lo] : r[hi])[kind];
 }
 
 export interface Sample {
@@ -53,10 +57,10 @@ export interface Sample {
  * the view is ambiguous — those heights are filled by interpolation), then the edges are smoothed
  * with a Gaussian of σ = `smooth` samples (the sheet's pixel steps would otherwise show as ripples).
  */
-export function sampleProfile(v: RefView, y0: number, y1: number, step: number, pick: (runs: Run[], y: number) => Run | null, smooth = 2): Sample[] {
+export function sampleProfile(v: RefView, y0: number, y1: number, step: number, pick: (runs: Run[], y: number) => Run | null, smooth = 2, kind: 'runs' | 'skin' | 'cloth' = 'runs'): Sample[] {
   const raw: (Sample | null)[] = [];
   for (let y = y0; y <= y1 + 1e-9; y += step) {
-    const run = pick(runsAt(v, y), y);
+    const run = pick(runsAt(v, y, kind), y);
     raw.push(run ? { y, l: run[0], r: run[1] } : { y, l: NaN, r: NaN });
   }
   // fill gaps linearly

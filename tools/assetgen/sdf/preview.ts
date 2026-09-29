@@ -33,7 +33,7 @@ const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[
 const srgb = (c: number) => Math.round(255 * Math.min(1, Math.max(0, c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055)));
 
 /** Render `f` (plus eyeballs) inside the box [lo, hi]; returns RGBA8. */
-export function renderSDF(f: SDF, lo: V3, hi: V3, shot: Shot, eyes: PreviewEye[] = [], clay: V3 = [0.58, 0.4, 0.3]): Uint8Array {
+export function renderSDF(f: SDF, lo: V3, hi: V3, shot: Shot, eyes: PreviewEye[] = [], clay: V3 = [0.58, 0.4, 0.3], albedoAt?: (p: V3) => V3): Uint8Array {
   const { w, h } = shot;
   const yaw = (shot.yaw * Math.PI) / 180, pitch = (shot.pitch * Math.PI) / 180;
   const back: V3 = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)];
@@ -43,7 +43,9 @@ export function renderSDF(f: SDF, lo: V3, hi: V3, shot: Shot, eyes: PreviewEye[]
   const eye: V3 = [shot.target[0] + back[0] * shot.dist, shot.target[1] + back[1] * shot.dist, shot.target[2] + back[2] * shot.dist];
   const ortho = shot.fov <= 0;
   const th = ortho ? shot.dist : Math.tan((shot.fov * Math.PI) / 360);
-  const key = norm([-0.35, 0.45, 0.82]), fill = norm([0.7, 0.15, 0.4]);
+  // lights follow the camera, as in sdf/raster.ts
+  const cam = (v: V3): V3 => norm([right[0] * v[0] + up[0] * v[1] + back[0] * v[2], right[1] * v[0] + up[1] * v[1] + back[1] * v[2], right[2] * v[0] + up[2] * v[1] + back[2] * v[2]]);
+  const key = cam([-0.35, 0.45, 0.82]), fill = cam([0.7, 0.15, 0.4]);
   const out = new Uint8Array(w * h * 4);
   const scene = (x: number, y: number, z: number) => {
     let d = f(x, y, z);
@@ -90,7 +92,7 @@ export function renderSDF(f: SDF, lo: V3, hi: V3, shot: Shot, eyes: PreviewEye[]
           const e2 = 0.0002;
           const g = eyeHit ? null : [f(p[0] + e2, p[1], p[2]) - f(p[0] - e2, p[1], p[2]), f(p[0], p[1] + e2, p[2]) - f(p[0], p[1] - e2, p[2]), f(p[0], p[1], p[2] + e2) - f(p[0], p[1], p[2] - e2)] as V3;
           const n = eyeHit ? norm([p[0] - eyeHit.c[0], p[1] - eyeHit.c[1], p[2] - eyeHit.c[2]]) : norm(g!);
-          let alb: V3 = clay, spec = 0.04, shin = 12;
+          let alb: V3 = albedoAt ? albedoAt(p) : clay, spec = 0.04, shin = 12;
           if (eyeHit) {
             const L = norm(eyeHit.look);
             const ang = Math.acos(Math.max(-1, Math.min(1, dot(n, L))));

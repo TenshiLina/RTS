@@ -31,6 +31,18 @@ def segment(im, gap_cols):
     return (d > 14) | (np.abs(chroma - bgc[:, None]) > 6)
 
 
+def classes(im):
+    """Skin and fabric masks: skin is warm (red well above blue), the fitted clothes a low-chroma
+    warm grey slightly off the neutral background. Used to find edges the silhouette hides, e.g.
+    the torso's outline behind the arms, or the arm's front and back in profile."""
+    R, G, B = im[:, :, 0], im[:, :, 1], im[:, :, 2]
+    V = im.max(2)
+    chroma = V - im.min(2)
+    skin = (R - B > 28) & (R > 95) & (R > G)
+    cloth = (chroma >= 7) & (chroma <= 26) & (V < 150) & (R >= G) & ~skin
+    return skin, cloth
+
+
 def runs(row, x0):
     out, start = [], None
     for i, v in enumerate(row):
@@ -50,15 +62,17 @@ def main(src, dst):
     cfg = SHEETS[key]
     im = np.asarray(Image.open(src).convert('RGB')).astype(float)
     m = segment(im, cfg['gap_cols'])
+    skin, cloth = classes(im)
     s = cfg['height'] / (cfg['soles']['front'] - cfg['skull_top'])
     out = {'scale': s, 'height': cfg['height'], 'views': {}}
     for name, (x0, x1) in cfg['views'].items():
         sole = cfg['soles'][name]
-        rows = {}
+        rows, extra = {}, {}
         for y in range(0, sole + 1):
             r = runs(m[y, x0:x1], x0)
             if r:
                 rows[y] = r
+                extra[y] = (runs(skin[y, x0:x1] & m[y, x0:x1], x0), runs(cloth[y, x0:x1] & m[y, x0:x1], x0))
         # centre line: in profile, the midpoint of the pelvis's depth; in the other views the mean
         # centre of the torso's run between 1.00 and 1.10 m (arms and hands hang clear of it there)
         if name == 'side':
@@ -76,7 +90,11 @@ def main(src, dst):
             cx = float(np.mean(cs))
         out['views'][name] = {
             'cx': cx, 'sole': sole,
-            'rows': [{'y': round((sole - y) * s, 5), 'runs': [[round((a - cx) * s, 5), round((b - cx) * s, 5)] for a, b in r]} for y, r in sorted(rows.items())],
+            'rows': [{'y': round((sole - y) * s, 5),
+                      'runs': [[round((a - cx) * s, 5), round((b - cx) * s, 5)] for a, b in r],
+                      'skin': [[round((a - cx) * s, 5), round((b - cx) * s, 5)] for a, b in extra[y][0]],
+                      'cloth': [[round((a - cx) * s, 5), round((b - cx) * s, 5)] for a, b in extra[y][1]]}
+                     for y, r in sorted(rows.items())],
         }
     json.dump(out, open(dst, 'w'), separators=(',', ':'))
     print(f'{dst}: scale {s * 1000:.3f} mm/px, views ' + ', '.join(f"{k} cx={v['cx']:.1f}" for k, v in out['views'].items()))

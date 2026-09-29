@@ -36,7 +36,14 @@ const mesh = cachedArrays(`figure5|${REF}|${CELL}`, deps, () => {
   const m = surfaceNets(fig.f, [-0.38, -0.01, -0.21], [0.38, 1.77, 0.22], CELL, 1.6);
   return { pos: Float64Array.from(m.pos), idx: Uint32Array.from(m.idx) };
 });
-console.log(`mesh: ${mesh.idx.length / 3} tris (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
+// the hair is its own layer, meshed finer (it thins to a few millimetres at the hairline)
+const hairMesh = cachedArrays(`figure5-hair|${REF}`, deps, () => {
+  const m = surfaceNets(fig.hair, [-0.12, 1.45, -0.14], [0.12, 1.76, 0.15], 0.002, 1.6);
+  return { pos: Float64Array.from(m.pos), idx: Uint32Array.from(m.idx) };
+});
+console.log(`mesh: ${mesh.idx.length / 3} + hair ${hairMesh.idx.length / 3} tris (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
+const HAIR: V3 = [0.075, 0.058, 0.05];
+const layers = [{ mesh }, { mesh: hairMesh, albedo: HAIR }];
 
 const dir = mkdtempSync(join(tmpdir(), 'fig-'));
 const H = 1000;
@@ -71,7 +78,7 @@ const q34Shift = { dx: 0 };
   let best = { yaw: v.yaw, dx: 0, score: -1 };
   const tryAt = (yaw: number, dx: number) => {
     rv.cx = cx0 + dx;
-    const sc = iou(rasterize([{ mesh }], shotFor(v, yaw)).mask, rm);
+    const sc = iou(rasterize(layers, shotFor(v, yaw)).mask, rm);
     if (sc > best.score) best = { yaw, dx, score: sc };
   };
   if (process.env.Q34) {
@@ -90,7 +97,7 @@ const q34Shift = { dx: 0 };
 const meta: { name: string; file: string; w: number; h: number; x0: number }[] = [];
 for (const v of VIEWS) {
   const w = v.x1 - v.x0;
-  const { rgba, mask } = rasterize([{ mesh }], shotFor(v, v.yaw));
+  const { rgba, mask } = rasterize(layers, shotFor(v, v.yaw));
   const file = join(dir, `${v.name}`);
   writeFileSync(file + '.rgba', rgba);
   writeFileSync(file + '.mask', mask);
@@ -100,7 +107,9 @@ for (const v of VIEWS) {
 const eyes: { c: V3; R: number; look: V3 }[] = []; // (block-in: the lids are closed)
 // framed like the sheet's portrait crops (head and neck, the ¾ one turned most of the way)
 for (const [name, yaw] of [['face_front', 0], ['face_q34', 68]] as const) {
-  const px = renderSDF(fig.headRegion, [-0.13, 1.36, -0.17], [0.13, 1.78, 0.17], { yaw, pitch: 0, dist: 1.84, target: [0, 1.57, 0.0], fov: 10, w: 300, h: 380 }, eyes);
+  const both: typeof fig.f = (x, y, z) => Math.min(fig.headRegion(x, y, z), fig.hair(x, y, z));
+  const albedo = (p: V3): V3 => (fig.hair(p[0], p[1], p[2]) < fig.headRegion(p[0], p[1], p[2]) ? HAIR : [0.58, 0.4, 0.3]);
+  const px = renderSDF(both, [-0.13, 1.36, -0.17], [0.13, 1.78, 0.17], { yaw, pitch: 0, dist: 1.84, target: [0, 1.57, 0.0], fov: 10, w: 300, h: 380 }, eyes, [0.58, 0.4, 0.3], albedo);
   writeFileSync(join(dir, name + '.rgba'), px);
 }
 const py = `
