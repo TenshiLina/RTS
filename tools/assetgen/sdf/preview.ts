@@ -30,7 +30,12 @@ const norm = (v: V3): V3 => {
 };
 const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const srgb = (c: number) => Math.round(255 * Math.min(1, Math.max(0, c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055)));
+// soft shoulder above 0.7 so lit clay never clips (a clipped channel shows as flat, sharp-edged patches)
+const tone = (c: number) => (c <= 0.7 ? c : 0.7 + (0.3 * (c - 0.7)) / (0.3 + (c - 0.7)));
+const srgb = (c0: number) => {
+  const c = tone(Math.max(0, c0));
+  return Math.round(255 * Math.min(1, c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055));
+};
 
 /** Render `f` (plus eyeballs) inside the box [lo, hi]; returns RGBA8. */
 export function renderSDF(f: SDF, lo: V3, hi: V3, shot: Shot, eyes: PreviewEye[] = [], clay: V3 = [0.58, 0.4, 0.3], albedoAt?: (p: V3) => V3): Uint8Array {

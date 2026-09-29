@@ -33,6 +33,9 @@ export function loadRef(name: string): RefSheet {
   return s;
 }
 export const refPath = (name: string) => fileURLToPath(new URL(`./${name}.json`, import.meta.url));
+export const refJsonPath = refPath;
+/** Any JSON measurement file next to the sheets. */
+export const loadJson = (path: string) => JSON.parse(readFileSync(path, 'utf8'));
 
 /** Runs on the row nearest to height y (silhouette, or its skin or clothing pixels). */
 export function runsAt(v: RefView, y: number, kind: 'runs' | 'skin' | 'cloth' = 'runs'): Run[] {

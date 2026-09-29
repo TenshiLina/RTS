@@ -10,12 +10,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { V3 } from '../../../src/core/math';
-import { figure5SDF } from '../recipes/figure5';
-import { surfaceNets } from '../sdf/mesher';
-import { cachedArrays, srcOf } from '../kit/cache';
+import { Q34 } from '../recipes/figure5';
+import { figureMeshes, HAIR_ALBEDO } from './figureMesh';
 import { rasterize } from '../sdf/raster';
 import { renderSDF } from '../sdf/preview';
-import { loadRef, refPath, refMask } from '../ref/refSheet';
+import { loadRef, refMask } from '../ref/refSheet';
 
 const REF = 'human-female';
 const SHEET = fileURLToPath(new URL('../../../docs/art/factions/human/human-female-turnaround.webp', import.meta.url));
@@ -28,22 +27,10 @@ const VIEWS: { name: 'front' | 'side' | 'back' | 'q34'; yaw: number; x0: number;
 
 const out = process.argv[2] ?? 'figure.png';
 const ref = loadRef(REF);
-const fig = figure5SDF(REF);
 const t0 = Date.now();
-const deps = ['../recipes/figure5.ts', '../ref/refSheet.ts', '../sdf/sdf.ts', '../sdf/mesher.ts'].map((p) => srcOf(new URL(p, import.meta.url).href)).concat([refPath(REF)]);
-const CELL = Number(process.env.CELL ?? 0.004);
-const mesh = cachedArrays(`figure5|${REF}|${CELL}`, deps, () => {
-  const m = surfaceNets(fig.f, [-0.38, -0.01, -0.21], [0.38, 1.77, 0.22], CELL, 1.6);
-  return { pos: Float64Array.from(m.pos), idx: Uint32Array.from(m.idx) };
-});
-// the hair is its own layer, meshed finer (it thins to a few millimetres at the hairline)
-const hairMesh = cachedArrays(`figure5-hair|${REF}`, deps, () => {
-  const m = surfaceNets(fig.hair, [-0.12, 1.45, -0.14], [0.12, 1.76, 0.15], 0.002, 1.6);
-  return { pos: Float64Array.from(m.pos), idx: Uint32Array.from(m.idx) };
-});
-console.log(`mesh: ${mesh.idx.length / 3} + hair ${hairMesh.idx.length / 3} tris (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
-const HAIR: V3 = [0.075, 0.058, 0.05];
-const layers = [{ mesh }, { mesh: hairMesh, albedo: HAIR }];
+const { fig, layers } = figureMeshes(REF);
+console.log(`meshes: ${layers.map((l) => l.mesh.idx.length / 3).join(' + ')} tris (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
+const HAIR = HAIR_ALBEDO;
 
 const dir = mkdtempSync(join(tmpdir(), 'fig-'));
 const H = 1000;
@@ -81,8 +68,8 @@ const q34Shift = { dx: 0 };
     const sc = iou(rasterize(layers, shotFor(v, yaw)).mask, rm);
     if (sc > best.score) best = { yaw, dx, score: sc };
   };
-  if (process.env.Q34) {
-    const [yaw, dx] = process.env.Q34.split(',').map(Number);
+  if (!process.env.SEARCH) {
+    const [yaw, dx] = (process.env.Q34 ?? `${Q34.yaw},${Q34.dxPx}`).split(',').map(Number);
     tryAt(yaw, dx);
   } else {
     for (let yaw = 20; yaw <= 65; yaw += 5) for (let dx = -30; dx <= 30; dx += 6) tryAt(yaw, dx);
