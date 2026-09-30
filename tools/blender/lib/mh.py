@@ -26,6 +26,7 @@ def load_base():
     global _base
     if _base is None:
         V, F, groups, g = [], [], {}, ''
+        gfaces = {}
         uv, fuv = [], []
         with open(os.path.join(MH, 'base.obj')) as fh:
             for l in fh:
@@ -39,10 +40,13 @@ def load_base():
                     toks = l.split()[1:]
                     idx = [int(t.split('/')[0]) - 1 for t in toks]
                     groups.setdefault(g, set()).update(idx)
+                    if g != 'body':
+                        gfaces.setdefault(g, []).append(idx)
                     if g == 'body':
                         F.append(idx)
                         fuv.append([int(t.split('/')[1]) - 1 if '/' in t and t.split('/')[1] else -1 for t in toks])
-        _base = {'V': np.array(V, dtype=np.float64), 'F': F, 'groups': groups, 'uv': np.array(uv), 'fuv': fuv}
+        _base = {'V': np.array(V, dtype=np.float64), 'F': F, 'groups': groups, 'uv': np.array(uv), 'fuv': fuv,
+                 'gfaces': gfaces}
     return _base
 
 
@@ -217,13 +221,17 @@ def set_modifier_keys(ob, values):
         ob.data.shape_keys.key_blocks[f'{key}:+'].value = max(0.0, v)
 
 
-def build_human(targets=None, modifiers=None, height=1.68, name='human', rig=True, shape=None, regional=None, ref=None):
+def build_human(targets=None, modifiers=None, height=1.68, name='human', rig=True, shape=None, regional=None, ref=None,
+                morph=None):
     """shape: optional V -> V applied to the morphed body (Blender frame) before the mesh and the
-    rig are built (sculpt layers)."""
+    rig are built (sculpt layers); morph: the same for all vertices (body and helpers: the rig's
+    joints follow), applied first."""
     base = load_base()
     tw = dict(targets or {})
     tw.update(modifier_targets(modifiers or {}))
     V = to_blender(morphed(tw, regional), height, ref)
+    if morph:
+        V = morph(V)
     if shape:
         V = V.copy()
         V[:BODY_VERTS] = shape(V[:BODY_VERTS])

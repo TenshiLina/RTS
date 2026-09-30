@@ -10,6 +10,12 @@
   slower (~30 s).
 * **MakeHuman 1.x CC0 assets** into `$RTS_TOOLS/makehuman`: base mesh, default skeleton and
   weights, modifier list, and the morph targets listed in `makehuman-targets.txt`.
+* **ICT-FaceKit's face model** (ICT Face Model Light, MIT licence, copyright USC Institute for
+  Creative Technologies; its `LICENSE` is kept beside the data) into `$RTS_TOOLS/ict`: the
+  neutral head and 100 identity shapes from light-stage scans, converted to `ict.npz`.
+  `lib/ict.py` registers the MakeHuman head to it and builds the characters' faces from it
+  (natural faces fitted to the concept; see `character/fit_face.py`). Credit it with the
+  characters.
 
 Verified in the cloud environment: scene built with `bpy`, rendered headlessly (Workbench,
 Eevee, Cycles), inspected, edited, re-rendered; MakeHuman base imported with targets as shape

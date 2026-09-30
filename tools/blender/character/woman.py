@@ -50,6 +50,8 @@ def params():
         p['sheet_offset'] = saved.get('sheet_offset', [0.0, 0.0])
         p['eye_depth'] = saved.get('eye_depth', 0.0)
         p['face'] = saved.get('face', {})
+        p['face_model'] = saved.get('face_model')
+        p['neck_shift'] = saved.get('neck_shift')
     return p
 
 
@@ -73,12 +75,69 @@ def face_regional(p):
     return [(t, mh.region_weights('head'))]
 
 
-def rest_vertices(p):
+def face_morph(p):
+    """The head from the face model (lib/ict.py: p['face_model'] = {'coeffs', 'scale', 'dz',
+    'ears', 'detail'}), as a function of all the vertices — or None (MakeHuman's own head).
+    'ears', 'lids', 'brow', 'eyes', 'eye_system': the ears' size and placement, the eyes' openings,
+    the brow ridge's flattening, the eyes' depth, the globes and the lids' wrap on them (ict.ear_warp,
+    lid_warp, brow_warp, eye_warp, eye_system; 'eye_system' also sizes the iris, add_eyes). 'detail': a
+    few MakeHuman feature modifiers applied on the model's face (the lids' size, where the concept
+    is beyond the real faces the model spans), {'group/l-name': value} for both sides."""
+    fm = p.get('face_model')
+    if not fm:
+        return None
+    from lib import ict
+    detail = {}
+    for k, v in (fm.get('detail') or {}).items():
+        g, n = k.split('/')
+        for side in (('l-', 'r-') if n.startswith('l-') else ('',)):
+            detail[f'{g}/{side}{n[2:]}' if side else k] = v
+    tw = mh.modifier_targets(detail)
+
+    def morph(V):
+        s = mh.to_blender.scale            # (the scale of the to_blender call that made V)
+        V = ict.apply(V, fm['coeffs'], scale=fm.get('scale', 1.0), dz=fm.get('dz', 0.0))
+        V = ict.ear_warp(V, fm.get('ears'))
+        V = ict.lid_warp(V, fm.get('lids'))
+        V = ict.brow_warp(V, fm.get('brow'))
+        V = ict.eye_warp(V, fm.get('eyes'))
+        V = ict.eye_system(V, fm.get('eye_system'))
+        for name, w in tw.items():
+            if w:
+                i, d = mh.read_target(os.path.join(mh.MH, 'targets', name + '.target'))
+                V[i] += w * mh.delta_to_blender(d, s)
+        return neck_shift(V, p.get('neck_shift'))
+    return morph
+
+
+def neck_shift(V, prm):
+    """The head and the upper neck moved back over the torso ('back', metres), the neck between
+    sheared smoothly — from 'lo' to 'hi' (metres below the pupil), and as far as a vertex is the
+    neck's and the head's (their skinning: the shoulders stay). The concept's side view has the
+    neck as a straight column under the head; ours leaned forward partway up (the head fitted to
+    the close-up profile, the neck's base to the full-body side view). Everything above 'hi' moves
+    as one: the head keeps its angle and its height."""
+    if not prm or not prm.get('back'):
+        return V
+    from lib import face
+    zp = face.eye_centre(V)[2]
+    lo, hi = zp - prm['lo'], zp - prm['hi']
+    t = np.clip((V[:, 2] - lo) / (hi - lo), 0, 1)
+    reg = np.maximum(mh.region_weights('neck01'), mh.region_weights('head'))
+    w = t * t * (3 - 2 * t) * np.clip(2 * reg, 0, 1)   # (at least half the neck's: all the way)
+    V = V.copy()
+    V[:, 1] += prm['back'] * w
+    return V
+
+
+def rest_vertices(p, face=True):
     """All vertices (body + helpers), rest pose, Blender frame: the macro, the head's own macro
-    blend, the modifiers."""
+    blend, the modifiers, the face model (face=False: without it)."""
     t = {**TARGETS, **mh.breast_targets(p['breast']['size'], p['breast']['firmness'])}
     t.update(mh.modifier_targets(p['modifiers']))
-    return mh.to_blender(mh.morphed(t, face_regional(p)), 1.68, SCALE_REF)
+    V = mh.to_blender(mh.morphed(t, face_regional(p)), 1.68, SCALE_REF)
+    fn = face_morph(p) if face else None
+    return fn(V) if fn else V
 
 
 def body_vertices(p, skin=None):
@@ -97,7 +156,7 @@ def posed_skin(p):
     bpy.ops.wm.read_factory_settings(use_empty=True)
     body, arm = mh.build_human(targets={**TARGETS, **mh.breast_targets(p['breast']['size'], p['breast']['firmness'])},
                                modifiers=p['modifiers'], height=1.68, name='woman', regional=face_regional(p),
-                               ref=SCALE_REF)
+                               ref=SCALE_REF, morph=face_morph(p))
     pose(arm, p['pose'])
     return mh.skin_weights(body, arm), mh.skin_matrices(arm)
 
@@ -182,11 +241,15 @@ def build(p=None, bake=True):
     p = p or params()
     targets = {**TARGETS, **mh.breast_targets(p['breast']['size'], p['breast']['firmness'])}
     body, arm = mh.build_human(targets=targets, modifiers=p['modifiers'], height=1.68, name='woman',
-                               regional=face_regional(p), ref=SCALE_REF)
+                               regional=face_regional(p), ref=SCALE_REF, morph=face_morph(p))
     pose(arm, p['pose'])
     ground(body, arm)
     if not bake:
         return body, arm
+    # the head's pose (rest → world), for the parts placed from rest positions: the eyes, the lashes
+    bpy.context.view_layer.update()
+    pb = arm.pose.bones['head']
+    arm['head_pose'] = [v for row in (arm.matrix_world @ pb.matrix @ pb.bone.matrix_local.inverted()) for v in row]
     dg = bpy.context.evaluated_depsgraph_get()
     ev = body.evaluated_get(dg)
     m = ev.to_mesh()
@@ -198,9 +261,9 @@ def build(p=None, bake=True):
     return body, arm
 
 
-def eye_material():
-    """Sclera, limbal ring, iris, pupil by the angle from the eyeball's forward axis (local -Y):
-    the iris ~1.4 cm across (the concept's, large), the pupil ~0.45 cm; glossy (wet)."""
+def eye_material_painted():
+    """The eye without an eye system (face_model.eye_system): sclera, limbal ring, iris, pupil
+    painted on the globe by the angle from its forward axis (local -Y); glossy (wet)."""
     mat = bpy.data.materials.get('eye') or bpy.data.materials.new('eye')
     mat.use_nodes = True
     nt = mat.node_tree
@@ -217,8 +280,8 @@ def eye_material():
     nt.links.new(neg.outputs['Value'], ramp.inputs['Fac'])
     nt.links.new(ramp.outputs['Color'], bsdf.inputs['Base Color'])
     cr = ramp.color_ramp
-    stops = [(0.0, (0.72, 0.68, 0.64)), (0.86, (0.70, 0.66, 0.62)), (0.872, (0.05, 0.03, 0.02)),
-             (0.885, (0.12, 0.06, 0.03)), (0.95, (0.26, 0.14, 0.06)), (0.982, (0.10, 0.05, 0.02)),
+    stops = [(0.0, (0.34, 0.30, 0.28)), (0.7, (0.46, 0.42, 0.39)), (0.828, (0.52, 0.48, 0.45)), (0.84, (0.05, 0.03, 0.02)),
+             (0.855, (0.12, 0.06, 0.03)), (0.95, (0.26, 0.14, 0.06)), (0.982, (0.10, 0.05, 0.02)),
              (0.986, (0.01, 0.01, 0.01)), (1.0, (0.0, 0.0, 0.0))]
     cr.elements[0].position, cr.elements[0].color = stops[0][0], (*stops[0][1], 1)
     cr.elements[1].position, cr.elements[1].color = stops[-1][0], (*stops[-1][1], 1)
@@ -228,27 +291,159 @@ def eye_material():
     return mat
 
 
+# the eye's parts, as fractions of the iris' radius (the limbus): the pupil, the limbal ring
+PUPIL, LIMBAL = 0.36, 0.92
+
+
+def eye_material(iris_r):
+    """The eyeball's surface: the iris by the distance from the eyeball's forward axis (local -Y)
+    over its radius iris_r (m) — pupil, iris, limbal ring (IRIS_RAMP; look.py recolours the iris
+    band) — and outside it the sclera, by the angle from the axis (darker toward the sides); the
+    sclera wet (glossy), the iris matte under the cornea."""
+    mat = bpy.data.materials.get('eye') or bpy.data.materials.new('eye')
+    mat.use_nodes = True
+    nt = mat.node_tree
+    for n in [n for n in nt.nodes if n.type != 'OUTPUT_MATERIAL']:
+        nt.nodes.remove(n)
+    bsdf = nt.nodes.new('ShaderNodeBsdfPrincipled')
+    nt.links.new(bsdf.outputs['BSDF'], [n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL'][0].inputs['Surface'])
+    tc = nt.nodes.new('ShaderNodeTexCoord')
+    sep = nt.nodes.new('ShaderNodeSeparateXYZ')
+    nt.links.new(tc.outputs['Object'], sep.inputs[0])
+
+    def math(op, a, b=None, clamp=False):
+        m = nt.nodes.new('ShaderNodeMath'); m.operation = op; m.use_clamp = clamp
+        for k, v in enumerate((a, b)):
+            if v is None:
+                continue
+            if isinstance(v, (int, float)):
+                m.inputs[k].default_value = v
+            else:
+                nt.links.new(v, m.inputs[k])
+        return m.outputs[0]
+    rho = math('SQRT', math('ADD', math('MULTIPLY', sep.outputs['X'], sep.outputs['X']),
+                            math('MULTIPLY', sep.outputs['Z'], sep.outputs['Z'])))
+    fac = math('DIVIDE', rho, iris_r)
+    iris = nt.nodes.new('ShaderNodeValToRGB'); iris.name = 'IRIS_RAMP'
+    nt.links.new(fac, iris.inputs['Fac'])
+    stops = [(0.0, (0.0, 0.0, 0.0)), (PUPIL - 0.02, (0.01, 0.01, 0.01)), (PUPIL, (0.10, 0.05, 0.02)),
+             (0.6, (0.26, 0.14, 0.06)), (LIMBAL - 0.03, (0.12, 0.06, 0.03)), (LIMBAL, (0.05, 0.03, 0.02)),
+             (1.0, (0.10, 0.08, 0.07))]
+    cr = iris.color_ramp
+    cr.elements[0].position, cr.elements[0].color = stops[0][0], (*stops[0][1], 1)
+    cr.elements[1].position, cr.elements[1].color = stops[-1][0], (*stops[-1][1], 1)
+    for pos, col in stops[1:-1]:
+        cr.elements.new(pos).color = (*col, 1)
+    norm = nt.nodes.new('ShaderNodeVectorMath'); norm.operation = 'NORMALIZE'
+    nt.links.new(tc.outputs['Object'], norm.inputs[0])
+    sepn = nt.nodes.new('ShaderNodeSeparateXYZ')
+    nt.links.new(norm.outputs['Vector'], sepn.inputs[0])
+    sclera = nt.nodes.new('ShaderNodeValToRGB')
+    nt.links.new(math('MULTIPLY', sepn.outputs['Y'], -1.0), sclera.inputs['Fac'])
+    cs = sclera.color_ramp
+    cs.elements[0].position, cs.elements[0].color = 0.0, (0.34, 0.30, 0.28, 1)
+    cs.elements[1].position, cs.elements[1].color = 1.0, (0.52, 0.48, 0.45, 1)
+    cs.elements.new(0.7).color = (0.46, 0.42, 0.39, 1)
+    # the iris where fac < 1 on the front half (a soft edge: the limbus blends into the sclera)
+    edge = nt.nodes.new('ShaderNodeMapRange')
+    nt.links.new(fac, edge.inputs['Value'])
+    edge.inputs['From Min'].default_value, edge.inputs['From Max'].default_value = 1.0, 1.08
+    edge.inputs['To Min'].default_value, edge.inputs['To Max'].default_value = 1.0, 0.0
+    front = math('LESS_THAN', sep.outputs['Y'], 0.0)
+    m = math('MULTIPLY', edge.outputs['Result'], front)
+    mix = nt.nodes.new('ShaderNodeMix'); mix.data_type = 'RGBA'
+    nt.links.new(m, mix.inputs['Factor'])
+    nt.links.new(sclera.outputs['Color'], mix.inputs[6]); nt.links.new(iris.outputs['Color'], mix.inputs[7])
+    nt.links.new(mix.outputs[2], bsdf.inputs['Base Color'])
+    rough = nt.nodes.new('ShaderNodeMapRange')
+    nt.links.new(m, rough.inputs['Value'])
+    rough.inputs['To Min'].default_value, rough.inputs['To Max'].default_value = 0.12, 0.55
+    nt.links.new(rough.outputs['Result'], bsdf.inputs['Roughness'])
+    return mat
+
+
+def cornea_material():
+    mat = bpy.data.materials.get('cornea') or bpy.data.materials.new('cornea')
+    mat.use_nodes = True
+    b = mat.node_tree.nodes['Principled BSDF']
+    b.inputs['Base Color'].default_value = (1, 1, 1, 1)
+    b.inputs['Roughness'].default_value = 0.0
+    b.inputs['IOR'].default_value = 1.376
+    b.inputs['Transmission Weight'].default_value = 1.0
+    return mat
+
+
+def head_pose(arm):
+    """The head's pose at the build (rest → world, a 4×4 numpy matrix): build() stores it before
+    the pose is baked."""
+    return np.array(arm['head_pose']).reshape(4, 4)
+
+
 def add_eyes(arm, targets, p):
-    """Eyeballs where MakeHuman's eye helpers are (the head is not posed, so the rest positions
-    hold), parented to the head bone."""
+    """Eyeballs where MakeHuman's eye helpers are (sized and placed by the face model's eye system),
+    carried by the head's pose, parented to the head bone; looking along the face model's gaze
+    (lib/ict.gaze) when there is one. With the face model's eye system (face_model.eye_system), each
+    as an eye is built: the globe with the iris a flat disc just behind the limbus (its diameter:
+    eye_system.iris, m), under a clear cornea — a steeper cap (0.65 of the globe's radius) from the
+    limbus, bulging ~0.7 mm past the globe; the iris seen through it sits back from the lids, as in
+    the concept's profile. Without it, the iris painted on the globe (eye_material_painted)."""
+    from mathutils import Matrix
+    import bmesh
+    H = Matrix(head_pose(arm).tolist())
     V = rest_vertices(p)
     g = mh.load_base()['groups']
-    mat = eye_material()
+    fm = p.get('face_model') or {}
+    built = bool((fm.get('eye_system') or {}).get('iris'))    # (else the painted eye, as before the eye system)
+    if built:
+        iris_r = fm['eye_system']['iris'] / 2
+        mat, cmat = eye_material(iris_r), cornea_material()
+    else:
+        mat = eye_material_painted()
     for side in ('l', 'r'):
         E = V[sorted(g[f'helper-{side}-eye'])]
         c = E.mean(0) + np.array([0.0, p.get('eye_depth', 0.0), 0.0])  # set back with the socket stroke
         r = float(np.linalg.norm(E - c, axis=1).mean())
         me = bpy.data.meshes.new(f'eye.{side}')
-        import bmesh
         bm = bmesh.new()
-        bmesh.ops.create_uvsphere(bm, u_segments=48, v_segments=32, radius=r)
+        bmesh.ops.create_uvsphere(bm, u_segments=64 if built else 48, v_segments=48 if built else 32, radius=r)
+        if built:
+            yl = -np.sqrt(max(r ** 2 - iris_r ** 2, 1e-12))            # (the limbus' plane, local)
+            for v in bm.verts:     # (the iris: flat, 0.4 mm behind the limbus' plane)
+                if v.co.y < 0 and np.hypot(v.co.x, v.co.z) < iris_r:
+                    v.co.y = yl + 0.0004
         bm.to_mesh(me); bm.free()
         for poly in me.polygons:
             poly.use_smooth = True
         ob = bpy.data.objects.new(f'eye.{side}', me)
         bpy.context.scene.collection.objects.link(ob)
         ob.data.materials.append(mat)
-        ob.location = Vector(c) + Vector((0, 0, arm.location.z))
+        co = None
+        if built:
+            rc = 0.65 * r
+            ycc = yl + np.sqrt(max(rc ** 2 - iris_r ** 2, 1e-12))
+            cm = bpy.data.meshes.new(f'cornea.{side}')
+            bm = bmesh.new()
+            bmesh.ops.create_uvsphere(bm, u_segments=64, v_segments=48, radius=rc)
+            bmesh.ops.translate(bm, verts=bm.verts, vec=(0.0, ycc, 0.0))
+            bmesh.ops.delete(bm, geom=[v for v in bm.verts if v.co.y > yl + 0.0001], context='VERTS')
+            bm.to_mesh(cm); bm.free()
+            for poly in cm.polygons:
+                poly.use_smooth = True
+            co = bpy.data.objects.new(f'cornea.{side}', cm)
+            bpy.context.scene.collection.objects.link(co)
+            co.data.materials.append(cmat)
+            co.visible_shadow = False            # (light reaches the iris through it)
+        R = Matrix.Identity(4)
+        if fm:   # (the face model's gaze: its lids were shaped around it)
+            from lib import ict
+            gz = Vector(ict.gaze(fm['coeffs'], side).tolist())
+            out = (fm.get('gaze') or {}).get('out', 0.0)          # (degrees further outward)
+            if out:
+                gz = Matrix.Rotation(np.radians(out) * (1 if side == 'l' else -1), 3, 'Z') @ gz
+            R = Vector((0, -1, 0)).rotation_difference(gz).to_matrix().to_4x4()
+        ob.matrix_world = H @ Matrix.Translation(Vector(c)) @ R
+        if co:
+            co.parent = ob
         bpy.context.view_layer.update()
         mw = ob.matrix_world.copy()
         ob.parent = arm
@@ -258,9 +453,20 @@ def add_eyes(arm, targets, p):
         ob.matrix_world = mw
 
 
-def iris_forward():
-    """How far the iris plane is in front of the eyeball's centre (m): the eye helper's mean
-    radius less 3 mm (as lib/face.py)."""
-    V = mh.to_blender(mh.load_base()['V'], 1.68)
-    E = V[sorted(mh.load_base()['groups']['helper-l-eye'])]
-    return float(np.linalg.norm(E - E.mean(0), axis=1).mean() - 0.003)
+def eye_points(arm, p):
+    """The eyes' centres for the face's frames (lib/face.eye_centre: behind the pupils, where the
+    eyeballs' centres are with the eyes looking straight ahead), posed with the head (world, m):
+    (left, right) mathutils Vectors."""
+    from mathutils import Vector
+    from lib import face
+    V = rest_vertices(p)
+    H = head_pose(arm)
+    return tuple(Vector((H[:3, :3] @ face.eye_centre(V, sd) + H[:3, 3]).tolist()) for sd in ('l', 'r'))
+
+
+def iris_forward(p=None):
+    """How far the eye's front (the upper lid's, lib/face.lid_front) is in front of the eyeball's
+    centre (m), for the review's profile alignment."""
+    from lib import face
+    eye, y = face.lid_front(rest_vertices(p or params()))
+    return float(eye[1] - y)

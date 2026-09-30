@@ -160,8 +160,8 @@ def region(out, z0, z1, views=('front', 'side', 'q34'), k=4, samples=48, offset=
 def faces(out, eye_l, eye_r, chin_z, samples=96, iris_forward=0.0):
     """Front and profile close-ups at the close-ups' scale: the front aligned on the pupils
     (sheet: 1274/1344, row 282), the profile on the eye line and scaled by eye-to-chin (sheet: eye
-    row 712, chin row 820). iris_forward: how far the iris plane is in front of the eyeball centres
-    (the profile is aligned on the iris, which is what the concept's profile shows of the eye)."""
+    row 712, chin row 820). iris_forward: how far the eye's front (the upper lid's) is in front of the
+    eyeball centres (the profile is aligned on it: the concept's eye front is column 1217.5)."""
     sc = bpy.context.scene
     cam = _camera()
     cam.data.type = 'ORTHO'
@@ -183,8 +183,8 @@ def faces(out, eye_l, eye_r, chin_z, samples=96, iris_forward=0.0):
     sp = (mid.z - chin_z) / 103.75
     box2 = (1180, 620, 1380, 860)
     W2, H2 = (box2[2] - box2[0]) * 2, (box2[3] - box2[1]) * 2
-    # horizontal: the sheet's iris column is 1227.5; ours is the iris plane's y
-    cy = ((box2[0] + box2[2]) / 2 - 1227.5) * sp
+    # horizontal: the sheet's eye front (the upper lid) is column 1217.5; ours is our upper lid's front
+    cy = ((box2[0] + box2[2]) / 2 - 1217.5) * sp
     cz2 = -((box2[1] + box2[3]) / 2 - 715) * sp
     shots.append(('face_side', 90, Vector((0, mid.y - iris_forward + cy, mid.z + cz2)), (box2[3] - box2[1]) * sp, W2, H2, box2))
     meta = []

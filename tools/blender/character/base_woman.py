@@ -43,8 +43,7 @@ print('IoU (below the neck):', ' '.join(f'{n}={s:.3f}' for n, s in scores))
 
 # face close-ups: eyes from the eyeballs, chin from the mesh
 bpy.context.view_layer.update()
-eye_l = bpy.data.objects['eye.l'].matrix_world.translation.copy()   # (the eyeballs, set in their sockets)
-eye_r = bpy.data.objects['eye.r'].matrix_world.translation.copy()
+eye_l, eye_r = woman.eye_points(arm, woman.params())   # (the eyes' centres behind the pupils, lib/face.eye_centre)
 ev = body.evaluated_get(bpy.context.evaluated_depsgraph_get())
 m = ev.to_mesh()
 mid = (eye_l + eye_r) / 2

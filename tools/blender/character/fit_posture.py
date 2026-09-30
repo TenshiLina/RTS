@@ -18,6 +18,8 @@ from character import woman
 KEYS = [a[2:] for a in sys.argv[1:] if a.startswith('--')] or ['pelvis_tilt', 'lumbar', 'thoracic', 'neck', 'lean', 'leg_fwd', 'shin_fwd']
 BACK = (0.18, 1.45)   # z range of the back line (above the heel: the feet are not fitted here)
 FRONT = [(0.18, 1.08), (1.34, 1.45)]  # the front, less the bust and the fabric below it
+if 'head' in KEYS:    # the head's carriage: the face's front edge from the chin to the brow too
+    FRONT.append((1.45, 1.585))       # (above: the hairline's strands)
 
 P = woman.params()
 bpy.ops.wm.read_factory_settings(use_empty=True)

@@ -11,6 +11,8 @@
 #   * Mesa's software OpenGL/EGL, so Eevee and Workbench render without a GPU (Cycles needs none)
 #   * the MakeHuman 1.x CC0 assets the character pipeline uses: base mesh, skeleton + weights,
 #     modifier list and the morph targets in tools/blender/makehuman-targets.txt
+#   * ICT-FaceKit's face model (ICT Face Model Light, MIT licence, (c) USC Institute for Creative
+#     Technologies): its neutral head and 100 identity shapes, converted to $RTS_TOOLS/ict/ict.npz
 set -euo pipefail
 TOOLS="${RTS_TOOLS:-$HOME/.cache/rts-tools}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,8 +36,9 @@ if ! "$TOOLS/blender/bin/python" -c "import bpy, sys; sys.exit(0 if bpy.app.vers
   [ -z "$PY" ] && { echo "python3.13 is required for bpy $BPY_VERSION" >&2; exit 1; }
   rm -rf "$TOOLS/blender"
   "$PY" -m venv "$TOOLS/blender"
-  "$TOOLS/blender/bin/pip" install -q --disable-pip-version-check "bpy==$BPY_VERSION" numpy pillow
+  "$TOOLS/blender/bin/pip" install -q --disable-pip-version-check "bpy==$BPY_VERSION" numpy pillow scipy
 fi
+"$TOOLS/blender/bin/python" -c "import scipy" 2>/dev/null || "$TOOLS/blender/bin/pip" install -q --disable-pip-version-check scipy
 
 # --- MakeHuman CC0 assets
 MH="$TOOLS/makehuman"
@@ -49,5 +52,19 @@ fetch "$MH_RAW/modifiers/modeling_modifiers.json" "$MH/modeling_modifiers.json"
 grep -v '^#' "$HERE/makehuman-targets.txt" | grep . | while read -r t; do mkdir -p "$MH/targets/$(dirname "$t")"; echo "$t"; done |
   MH_RAW="$MH_RAW" MH="$MH" xargs -P 12 -I{} sh -c '[ -s "$MH/targets/{}.target" ] || curl -fsSL --retry 3 -o "$MH/targets/{}.target" "$MH_RAW/targets/{}.target"'
 
+# --- ICT-FaceKit's face model (MIT): ~250 MB of OBJs, fetched 12 at a time, converted, then removed
+ICT="$TOOLS/ict"
+ICT_RAW="https://raw.githubusercontent.com/ICT-VGL/ICT-FaceKit/master"
+if [ ! -s "$ICT/ict.npz" ]; then
+  mkdir -p "$ICT/src"
+  fetch "$ICT_RAW/LICENSE" "$ICT/LICENSE"
+  fetch "$ICT_RAW/FaceXModel/generic_neutral_mesh.obj" "$ICT/src/generic_neutral_mesh.obj"
+  seq -f "%03g" 0 99 | ICT_RAW="$ICT_RAW" ICT="$ICT" xargs -P 12 -I{} sh -c \
+    '[ -s "$ICT/src/identity{}.obj" ] || curl -fsSL --retry 3 -o "$ICT/src/identity{}.obj" "$ICT_RAW/FaceXModel/identity{}.obj"'
+  (cd "$HERE" && RTS_TOOLS="$TOOLS" "$TOOLS/blender/bin/python" -c "from lib import ict; ict.convert('$ICT/src', '$ICT/ict.npz')")
+  rm -rf "$ICT/src"
+fi
+
 "$TOOLS/blender/bin/python" -c "import bpy; print('bpy', bpy.app.version_string, 'ok')"
 echo "makehuman assets: $(find "$MH" -type f | wc -l) files in $MH"
+echo "face model: $(du -h "$ICT/ict.npz" | cut -f1) in $ICT"
