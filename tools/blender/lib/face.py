@@ -7,7 +7,8 @@ plus the eyeball helper's centre (the pupil) and extrema of the midline profile.
 
 Coordinates: centimetres relative to the left pupil's height and the midline, x = lateral
 (front view), y = forward-negative depth (profile), z = up. The concept's are measured on the
-sheet's close-ups (front: pupils 1274/1344 at row 282.5; profile: the eye's front 1217.5 — the
+sheet's close-ups (front: the pupils — the irises' centres, circles fitted to their edges; the
+painted catchlights, 1274/1344 at 282.5, are off them — 1272.55/1344.4 at row 283; profile: the eye's front 1217.5 — the
 upper lid's margin and lash line, the eye's visible front in profile — at the pupils' row 715) and scaled so
 its interpupillary distance equals ours (the proportions are the design; the absolute size is
 ours, which is anthropometric).
@@ -33,7 +34,8 @@ def ear_vertices():
 
 # vertex indices (left side; the right is the mirror)
 V_MOUTH_CORNER = 7128      # mouth-scale-horiz
-V_ALAR = 7099              # nose-nostrils-width
+V_ALAR = 11685            # the alare: the ala's most lateral point, its side wall facing out (7099, lower on the
+                          # alar base, read our nose 5 mm narrower than it renders)
 V_EYE_OUTER = 6809         # l-eye-corner1
 V_EYE_INNER = 6856         # l-eye-corner2
 V_CHIN_SIDE = 11778        # chin-width
@@ -42,17 +44,17 @@ V_LIP_TOP = 362            # mouth-upperlip-height: the upper lip's vermilion bo
 V_LIP_BOTTOM = 7241        # mouth-lowerlip-height: the lower lip's vermilion border
 
 # the concept, front close-up (sheet px) and profile close-up (sheet px)
-REF_FRONT = {'pupil_l': (1274, 282.5), 'pupil_r': (1344, 282.5), 'mid_x': 1309,
-             'eye_outer': (1260.0, 286.5), 'eye_inner': (1290, 288.75),
-             # lid margins: the drawn aperture less the liner and lashes (~1.5 px each)
-             'lid_upper': (1274, 277.75), 'lid_lower': (1274, 289.75),
+REF_FRONT = {'pupil_l': (1272.55, 283.0), 'pupil_r': (1344.4, 283.0), 'mid_x': 1308.5,
+             'eye_outer': (1256.6, 285.5), 'eye_inner': (1288.5, 289.5),
+             # lid margins over the iris (REF_EYE_UPPER/LOWER)
+             'lid_upper': (1274, 278.85), 'lid_lower': (1274, 290.3),
              'brow_low': (1274, 261.25), 'alar': (1291.25, 331.25), 'nose_tip': (1310, 322.5),
              'subnasale': (1310, 336.25), 'mouth_corner': (1285.2, 359.5), 'lip_top': (1310, 350.5),
-             'stomion': (1310, 358), 'lip_bottom': (1310, 372.5), 'chin_side': (1293, 397),
+             'stomion': (1310, 358), 'lip_bottom': (1310, 371.5), 'chin_side': (1293, 397),
              'menton': (1310, 402.5), 'gonion': (1250, 367),
              # face outline half-widths (px from the midline) by row
              'outline': [(300, 69), (320, 67), (340, 63.5), (350, 60.5), (360, 56), (367, 53.5)]}
-REF_PROFILE = {'eye': (1217.5, 715), 'nose_tip': (1192, 750), 'subnasale': (1207, 769),
+REF_PROFILE = {'eye': (1217.5, 715), 'nose_tip': (1192, 750), 'subnasale': (1206, 764.5),
                'lip_top': (1206.25, 775), 'stomion': (1211.25, 781.25), 'lip_bottom': (1210.5, 787.5),
                'labiomental': (1220, 797.5), 'pogonion': (1219.5, 810), 'menton': (1226, 818.75),
                'nasion': (1205, 710), 'glabella': (1203.5, 697), 'tragus': (1310, 730)}
@@ -149,6 +151,8 @@ def ours(V, pick=None):
 
     def ext(z0, z1, fn, name=None):
         m = (z <= z0) & (z >= z1)
+        if not m.any():     # (a window between sparse midline vertices: widen it)
+            m = (z <= z0 + 0.5) & (z >= z1 - 0.5)
         i = np.where(m)[0][fn(y[m])]
         return (y[i], z[i]), mi[i]
     PROFILE_KEYS = ('nose_tip', 'subnasale', 'lip_top', 'stomion', 'lip_bottom', 'labiomental', 'pogonion',
@@ -232,7 +236,8 @@ def ref_silhouettes(ipd_cm):
     for r in range(336, 421):   # (from below the earlobes, which touch the jaw at 333-335, down the neck)
         ext = []
         for sg in (-1, 1):
-            x, gap, last = cx + sg * 30, 0, cx + sg * 30   # (from beyond the mouth's corners: the lips aren't skin-coloured)
+            x = int(round(cx)) + sg * 30         # (from beyond the mouth's corners: the lips aren't skin-coloured)
+            gap, last = 0, x
             while abs(x - cx) < 130:
                 x += sg
                 if m[r, x]:
@@ -291,17 +296,124 @@ def our_silhouettes(V, front_z, prof_z, under_y, E=None):
     return np.array(fw), np.array(pf), np.array(un)
 
 
+# The nose's underside in the profile close-up, tip to subnasale (sheet px): per column, where the
+# shaded underside meets the background — the midpoint of its luminance step (the skin mask's last
+# row runs ~0.5 px lower; under the nostril, 1202-1205, the step below it). The columella rises ~30
+# degrees from the lip to the tip; the subnasale is the corner at (1206, 764.5), where the lip's
+# front turns down (an earlier landmark put it 3.5 px lower, on the lip). The profile's per-row
+# silhouette (ref_silhouettes) barely weighs this near-level edge: fitted as its own outline.
+REF_NOSE_UNDER = [(1193, 755.6), (1194, 756.2), (1195, 757.6), (1196, 758.6), (1197, 759.2), (1198, 759.9),
+                  (1199, 760.5), (1200, 761.1), (1201, 761.4), (1202, 761.9), (1203, 762.2), (1204, 762.6),
+                  (1205, 762.9)]
+
+
+def ref_nose_under(ipd_cm):
+    """The concept's nose underside in cm: (depth from the eye's front, height from the eye row) —
+    the profile's frame, scaled as ref_silhouettes."""
+    f, p = REF_FRONT, REF_PROFILE
+    s = ipd_cm / (f['pupil_r'][0] - f['pupil_l'][0])
+    sp = ((f['menton'][1] - f['pupil_l'][1]) * s) / (p['menton'][1] - p['eye'][1])
+    ex, ey = p['eye']
+    return [((x - ex) * sp, (ey - r) * sp) for x, r in REF_NOSE_UNDER]
+
+
+def our_nose_under(V, depths, E=None):
+    """Our nose's underside: at each depth (cm from the upper lid's front, as our_silhouettes), the
+    lowest point of the nose on the midline (within 4 mm of it; above the upper lip: 25-52 mm under
+    the pupils), cm from the pupil (NaN where the plane misses the nose)."""
+    from . import measure
+    eye, iris_y = lid_front(V)
+    B = V[:mh.BODY_VERTS]
+    if E is None:
+        E = measure.mesh_edges(mh.load_base()['F'])
+    Bs = B[:, [0, 2, 1]]
+    out = []
+    for q in measure.sections(Bs, E, iris_y + np.asarray(depths) / 100):
+        q = q[(np.abs(q[:, 0]) < 0.004) & (q[:, 1] < eye[2] - 0.025) & (q[:, 1] > eye[2] - 0.052)]
+        out.append((q[:, 1].min() - eye[2]) * 100 if len(q) else np.nan)
+    return np.array(out)
+
+
+# The nose base's features, traced (sheet px) to review and design the alae and nostrils against (not
+# fitted). Creases are the valleys of the local contrast (luminance less its 2-4 px blur), not edges:
+# a groove is the darkest line whichever side the light comes from.
+# Front close-up (the figure's right half, seen on the left; its mirror about the midline agrees
+# within ~0.5 px — ~0.9 under the ala, the half in shade: averaged):
+# - 'alar_crease': the groove round the ala — over its top (faint: a quarter of the lower part's
+#   depth), down its outer side (the alar-facial groove) and under it to the alar base, fading out
+#   under the nostril at 1300. (The ala's shadow on the lip lies under its lower part: the base may
+#   sit ~0.5 px higher.)
+# - 'tip_edge': the faint crease on the ala's inner side, between it and the tip lobule, down to the
+#   nostril's top (both halves: x 1298.0 +- 0.3 from row 315 to 326; above, they part).
+# - 'nostril': the visible opening, half-way between its core and the skin round it (4.4 x 2.1 px,
+#   its inner end lower).
+# - 'columella_base': the shadow line from the nostril's inner end down to the subnasale (337.2 on
+#   the midline).
+REF_NOSE_FRONT = {
+    'alar_crease': [(1297.0, 316.9), (1295.0, 318.1), (1294.0, 319.0), (1293.2, 321.0), (1292.4, 323.0),
+                    (1291.75, 325.0), (1291.65, 327.0), (1292.0, 329.0), (1292.4, 330.5), (1292.7, 332.0),
+                    (1293.2, 333.0), (1294.0, 334.0), (1295.0, 334.6), (1296.0, 335.1), (1297.0, 335.4),
+                    (1298.0, 335.75), (1299.0, 336.1), (1300.0, 336.35)],
+    'tip_edge': [(1298.2, 315.0), (1298.1, 317.0), (1297.95, 319.0), (1297.85, 321.0), (1297.9, 323.0),
+                 (1297.95, 325.0), (1298.1, 326.0), (1298.8, 327.3)],
+    'nostril': [(1297.8, 332.0), (1298.3, 331.4), (1299.0, 330.6), (1300.0, 330.5), (1301.0, 330.65),
+                (1302.0, 331.5), (1302.5, 332.2), (1302.0, 332.5), (1301.0, 332.6), (1300.0, 332.7),
+                (1299.0, 332.75), (1298.3, 332.5), (1297.8, 332.0)],
+    'columella_base': [(1304.0, 334.0), (1305.0, 335.2), (1306.0, 335.95), (1307.0, 336.5), (1308.0, 337.1),
+                       (1308.5, 337.2)]}
+# Profile close-up:
+# - 'alar_crease': the groove behind and under the ala (the alar-facial groove), from the ala's top
+#   to where its rim meets the lip: valleys along rays from the ala's centre. Over the ala's top the
+#   concept paints no crease (a dip of 2-4 against ~8-20 behind and under it): the ala's top is the
+#   upper edge of its highlight, row ~751.8 across 1208-1214.
+# - 'nostril': the visible crescent between the alar rim (its top) and the columella (its bottom),
+#   half-way between its core and the skin; the columella's lower edge is REF_NOSE_UNDER (it shows
+#   ~4 mm below the alar rim).
+REF_NOSE_PROFILE = {
+    'alar_crease': [(1216.0, 746.6), (1216.45, 746.9), (1217.8, 747.9), (1218.1, 749.6), (1219.0, 750.9),
+                    (1219.9, 752.35), (1220.0, 754.0), (1219.1, 755.5), (1218.3, 756.8), (1217.4, 758.0),
+                    (1217.0, 759.5), (1216.0, 760.5), (1214.5, 760.9), (1213.1, 761.05), (1211.7, 760.9)],
+    'nostril': [(1202.45, 758.4), (1203.0, 757.46), (1204.0, 757.14), (1205.0, 757.09), (1206.0, 757.28),
+                (1207.0, 757.47), (1208.0, 757.77), (1209.0, 758.29), (1210.0, 758.72), (1211.0, 759.6),
+                (1211.3, 760.1), (1211.0, 760.17), (1210.0, 760.13), (1209.0, 759.73), (1208.0, 759.46),
+                (1207.0, 759.0), (1206.0, 758.86), (1205.0, 758.88), (1204.0, 759.0), (1203.0, 759.25),
+                (1202.45, 758.4)]}
+
+
 # ---- feature outlines (front close-up): the lips' vermilion and the eyes' opening
-# The concept's eye opening, traced along its lash lines (sheet px; the figure's right eye, seen on
-# the left — mirrored to ours by symmetry): the upper lid's margin is the lower edge of the dark
-# lash/liner band, the lower lid's the edge of the lower lash line; the liner's wing past the outer
-# corner is make-up, not the opening. Corners: outer (1260, 286.5) — where the white of the eye ends
-# (1261-1262; the other eye's 13 px from its pupil, this one's 14.5), the lash lines run on to 1250 —
-# inner (1290, 288).
-REF_EYE_UPPER = [(1260, 286.5), (1262, 282.0), (1265, 279.0), (1270, 278.5), (1275, 278.5),
-                 (1280, 279.4), (1284, 281.2), (1287, 283.8), (1290, 288.0)]
-REF_EYE_LOWER = [(1260, 286.5), (1262, 289.0), (1265, 290.2), (1270, 290.8), (1275, 291.0),
-                 (1280, 290.6), (1284, 289.9), (1288, 289.0), (1290, 288.0)]
+# The concept's eye opening (sheet px; the figure's right eye, seen on the left — mirrored to ours by
+# symmetry): the lid margins, the anatomy under her dark eye makeup (the look paints its own). Both eyes
+# measured, the other mirrored about the midline, and averaged (they differ by up to ~1 px: the head is
+# not quite square to the view). (Provisional: trace C2, under adversarial review.)
+# - upper: the liner's band is a smooth arch whose darkest line (the lash line under the liner) runs
+#   ~1.1 px above where the band gives way to the eyeball (sclera or iris) — at every column, over the
+#   white and over the iris alike (median 1.08, IQR 0.96-1.17). The margin is that lower edge: each
+#   column's crossing halfway from the band's darkest to the eyeball's level just below it, both eyes
+#   averaged, a robust degree-5 fit (0.16 px rms; convex throughout, no inflection; its peak at 1270.25,
+#   279.86, just beside the pupil). Over the iris the catchlights' tops (~280.3-280.9) bound it too.
+#   The previous trace took the band's quarter-height (a quarter of the way up from its darkest) and
+#   then raised the margin over the iris 0.6 px: it cut diagonally through the liner's soft gradient
+#   (below its darkest line beside the eye, above it over the iris), which bent the lid on the outside
+#   and blunted the outer corner.
+# - lower: where the eyeball meets the lid's rim — over the sclera halfway down to the rim's darker line
+#   below it, over the iris halfway up from the iris to the rim's level (the iris is darker than the
+#   rim); a robust degree-4 fit, the columns at the iris' edges left out.
+# - corners as before: the outer (1256.6, 285.5), ~13 mm out from the pupil, where the white tapers
+#   off into the shadowed recess under the liner's wing (the wing runs on, up and out: makeup); the
+#   inner (1288.5, 289.5), where the band meets the rim beside the caruncle. The ends (within ~1.5 px
+#   of the corners) blend into them by hand.
+REF_EYE_UPPER = [(1256.6, 285.5), (1258, 283.92), (1259, 283.23), (1260, 282.63), (1261, 282.09),
+                 (1262, 281.63), (1263, 281.22), (1264, 280.87), (1265, 280.58), (1266, 280.34),
+                 (1267, 280.14), (1268, 280), (1269, 279.91), (1270, 279.86), (1271, 279.87), (1272, 279.94),
+                 (1273, 280.06), (1274, 280.23), (1275, 280.47), (1276, 280.77), (1277, 281.13),
+                 (1278, 281.57), (1279, 282.07), (1280, 282.64), (1281, 283.28), (1282, 284), (1283, 284.8),
+                 (1284, 285.66), (1285, 286.6), (1286, 287.61), (1287, 288.55), (1288.5, 289.5)]
+REF_EYE_LOWER = [(1256.6, 285.5), (1258, 287.2), (1260, 288.7), (1261, 289.18), (1262, 289.57), (1263, 289.89),
+                 (1264, 290.15), (1265, 290.34), (1266, 290.47), (1267, 290.56), (1268, 290.6), (1269, 290.61),
+                 (1270, 290.58), (1271, 290.52), (1272, 290.44), (1273, 290.33), (1274, 290.21),
+                 (1275, 290.08), (1276, 289.94), (1277, 289.79), (1278, 289.63), (1279, 289.48),
+                 (1280, 289.32), (1281, 289.16), (1282, 289), (1283, 288.84), (1285, 288.75), (1287, 289.05),
+                 (1288.5, 289.5)]
 # The concept's lips, traced (sheet px; u = px from the mouth's midline 1309.3, both halves folded:
 # they agree within ~1 px): the vermilion border's top (upper lip) and bottom (lower lip) edges,
 # corner to corner. The corners are the ends of the dark mouth line (1285.2 and 1333.4, row 359.5),
@@ -400,6 +512,116 @@ def lash_roots(V, side='l'):
         a, c = out
         _roots[side] = (a, c) if B0[a, 1].mean() > B0[c, 1].mean() else (c, a)   # (upper, lower: MakeHuman is Y-up)
     return tuple(r[np.argsort(V[r, 0])] for r in _roots[side])
+
+
+_open_faces = {}
+
+
+def _inside2(P, poly):
+    """Which of the 2D points P are inside the polygon poly (even-odd rule)."""
+    x, y = P[:, 0], P[:, 1]
+    inside = np.zeros(len(P), bool)
+    for (x1, y1), (x2, y2) in zip(poly, np.roll(poly, -1, axis=0)):
+        cross = (y1 > y) != (y2 > y)
+        xi = x1 + (y - y1) * (x2 - x1) / np.where(y2 != y1, y2 - y1, 1e-12)
+        inside ^= cross & (x < xi)
+    return inside
+
+
+def opening(V, eye_x, side='l', dz=0.00005, eye_depth=0.0):
+    """The eye's visible opening in the front view, as rendered: at each x (cm from the midline, the
+    frames of ref_features), the top and the bottom (cm from the pupil) of the run of the column
+    where the eyeball (as character/woman.add_eyes builds it: the helper's mean, its mean radius) or
+    the tissue inside the lid margins (the conjunctiva, as character/look._conjunctiva) is in front
+    of the skin — the skin's rim, not the lash line (NaN where the column is closed). Skin faces
+    within 2.5 cm of the eye (MakeHuman's quads, triangulated), cut by each column."""
+    b = mh.load_base()
+    g = b['groups']
+    if side not in _open_faces:
+        B0 = b['V']
+        E0 = B0[sorted(g[f'helper-{side}-eye'])]
+        e0 = E0.mean(0)
+        r0 = np.linalg.norm(E0 - e0, axis=1).mean()          # (MakeHuman's units: 2.5 cm ~ 2.1 radii)
+        F = [f for f in b['F'] if np.linalg.norm(B0[f] - e0, axis=1).max() < 2.1 * r0]
+        tri = [(t, f) for f in F for t in ([f[0], f[1], f[2]], [f[0], f[2], f[3]])[:len(f) - 2]]
+        fv = np.full((len(tri), 4), -1)
+        for i, (_, f) in enumerate(tri):
+            fv[i, :len(f)] = f
+        _open_faces[side] = (np.array([t for t, _ in tri]), fv)
+    tri, fv = _open_faces[side]
+    E = V[sorted(g[f'helper-{side}-eye'])]
+    c = E.mean(0) + np.array([0.0, eye_depth, 0.0])
+    r = float(np.linalg.norm(E - c, axis=1).mean())
+    pupil = eye_centre(V, side)
+    sg = 1.0 if side == 'l' else -1.0
+    X = sg * np.asarray(eye_x, float) / 100
+    # the conjunctiva: inside the opening's loop (front view: aperture_ring) and behind the lash roots' frontmost
+    up, lo = lash_roots(V, side)
+    ring = aperture_ring(V, side)
+    T = V[tri]                                                # (n, 3 corners, xyz)
+    Q = V[np.maximum(fv, 0)]                                  # (the triangles' quads: all their corners)
+    nq = _inside2(Q.reshape(-1, 3)[:, [0, 2]], ring).reshape(fv.shape) & (Q[:, :, 1] > min(V[up, 1].min(), V[lo, 1].min()) - 0.0005)
+    conj = (nq | (fv < 0)).all(1)
+    zs = np.arange(-0.012, 0.012, dz) + pupil[2]
+    top, bot = np.full(len(X), np.nan), np.full(len(X), np.nan)
+    for i, x0 in enumerate(X):
+        # each triangle's cut by the vertical plane x = x0: a segment (z, y) to (z, y)
+        a, bq = T, np.roll(T, -1, axis=1)
+        da, db = a[:, :, 0] - x0, bq[:, :, 0] - x0
+        cr = (da * db < 0) | ((da == 0) & (db != 0))
+        k = cr.sum(1) == 2
+        if not k.any():
+            continue
+        t = np.clip(da / np.where(da - db != 0, da - db, 1e-12), 0, 1)
+        P = a + (bq - a) * t[:, :, None]
+        P, crk, ck = P[k], cr[k], conj[k]
+        o = np.argsort(~crk, axis=1, kind='stable')[:, :2]
+        p0 = np.take_along_axis(P, o[:, :1, None], 1)[:, 0]
+        p1 = np.take_along_axis(P, o[:, 1:2, None], 1)[:, 0]
+        z0, z1 = np.minimum(p0[:, 2], p1[:, 2]), np.maximum(p0[:, 2], p1[:, 2])
+        y0 = np.where(p0[:, 2] <= p1[:, 2], p0[:, 1], p1[:, 1]); y1 = np.where(p0[:, 2] <= p1[:, 2], p1[:, 1], p0[:, 1])
+        w = np.clip((zs[:, None] - z0) / np.maximum(z1 - z0, 1e-12), 0, 1)
+        yz = y0 + (y1 - y0) * w
+        cov = (zs[:, None] >= z0) & (zs[:, None] <= z1)
+        skin = np.where(cov & ~ck, yz, np.inf).min(1)
+        tissue = np.where(cov & ck, yz, np.inf).min(1)
+        rho2 = (x0 - c[0]) ** 2 + (zs - c[2]) ** 2
+        ye = np.where(rho2 < r * r, c[1] - np.sqrt(np.maximum(r * r - rho2, 0)), np.inf)
+        front = np.minimum(ye, tissue)
+        m = np.where(np.isfinite(front), np.minimum(skin, 1.0) - front, -1.0)   # (> 0: open)
+        op = m > 0
+        if not op.any():
+            continue
+        j0 = int(np.argmin(np.abs(zs - pupil[2])))
+        idx = np.where(op)[0]
+        runs = np.split(idx, np.where(np.diff(idx) > 1)[0] + 1)
+        run = min(runs, key=lambda q: 0 if q[0] <= j0 <= q[-1] else min(abs(q[0] - j0), abs(q[-1] - j0)))
+        lo_i, hi_i = run[0], run[-1]
+        def edge(i_in, i_out):
+            if not 0 <= i_out < len(zs):
+                return zs[i_in]
+            mi, mo = m[i_in], m[i_out]
+            f = mi / (mi - mo) if np.isfinite(mo) and mi - mo > 0 else 0.5
+            return zs[i_in] + (zs[i_out] - zs[i_in]) * min(max(f, 0.0), 1.0)
+        bot[i], top[i] = edge(lo_i, lo_i - 1), edge(hi_i, hi_i + 1)
+    return (top - pupil[2]) * 100, (bot - pupil[2]) * 100
+
+
+def canthi(side='l'):
+    """The eye's corner vertices on the skin (outer, inner) for either side."""
+    if side == 'l':
+        return V_EYE_OUTER, V_EYE_INNER
+    m = mh.mirror_map()
+    return int(m[V_EYE_OUTER]), int(m[V_EYE_INNER])
+
+
+def aperture_ring(V, side='l'):
+    """The eye's opening as a loop in the front view (x, z): the lid margins (the lash strips' roots,
+    which stop short of the corners) closed through the corners' skin vertices."""
+    up, lo = lash_roots(V, side)
+    co = V[list(canthi(side))]
+    hi_end, lo_end = (co[0], co[1]) if co[0, 0] > co[1, 0] else (co[1], co[0])
+    return np.r_[V[up][:, [0, 2]], hi_end[None, [0, 2]], V[lo][::-1][:, [0, 2]], lo_end[None, [0, 2]]]
 
 
 def our_features(V, eye_x, lip_x):

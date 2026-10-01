@@ -50,6 +50,31 @@ def load_base():
     return _base
 
 
+_mirror = None
+
+
+def mirror_map():
+    """Each vertex's mirror image across x = 0 on the base mesh (exactly symmetric: the vertices on
+    the midline are their own)."""
+    global _mirror
+    if _mirror is None:
+        from scipy.spatial import cKDTree
+        V = load_base()['V']
+        _mirror = cKDTree(V * [-1, 1, 1]).query(V)[1]
+    return _mirror
+
+
+def symmetrized(V):
+    """V made symmetric: the mean of its two sides (each vertex with its mirror image's reflection),
+    the midline's vertices put on it — smooth across the midline (copying one side onto the other
+    creases it wherever that side's surface slopes across)."""
+    m = mirror_map()
+    x0 = load_base()['V'][:, 0]
+    V = (V + V[m] * [-1, 1, 1]) / 2
+    V[np.abs(x0) <= 1e-6, 0] = 0.0
+    return V
+
+
 _targets = {}
 
 

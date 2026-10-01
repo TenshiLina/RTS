@@ -29,7 +29,25 @@ LIPS_EDGE = (0.51, 0.21, 0.16)
 BROW = (0.085, 0.05, 0.038)     # brow hair; with the skin between the hairs the brow reads as the
 BROW_DENSITY = 1.0               # concept's (linear 0.15, 0.09, 0.07: ~a fifth of the skin's value)
 LASH = (0.012, 0.009, 0.008)
-IRIS = [(0.0, (0.035, 0.020, 0.012)), (0.35, (0.10, 0.055, 0.028)), (0.8, (0.16, 0.09, 0.045)), (1.0, (0.05, 0.03, 0.02))]
+CONJUNCTIVA = (0.36, 0.19, 0.16, 1.0)   # the caruncle's and the lids' inner rims' pink (the inner corner: the
+# concept's ~0.8 of the skin's value, a little redder; a paler one read as a white glint)
+RECESS = (0.20, 0.18, 0.17, 1.0)        # the outer corner's recess beyond the eyeball: dark and neutral, as the
+# concept's — a real one sits in shadow; pink there, light bouncing in the narrow cavity reddened it to raw red
+RECESS_SKIN = (0.24, 0.13, 0.10, 1.0)   # the skin's own toward it: shadowed skin (the neutral grey on the lit
+# faces at the corner's apex read as a blue-grey smudge)
+IRIS = [(0.0, (0.016, 0.010, 0.006)), (0.35, (0.046, 0.023, 0.010)), (0.8, (0.095, 0.046, 0.020)), (1.0, (0.05, 0.03, 0.02))]   # (its outer
+# third dark, as the concept's ~0.35 of the skin: a lighter iris read small beside the white)
+# the sclera, as the concept's: a warm, shaded off-white (its white reads pinkish grey beside the skin,
+# ~0.65 of the cheek's brightness), darker toward the sides: (position from the side, colour)
+SCLERA = [(0.0, (0.37, 0.32, 0.30)), (0.7, (0.48, 0.42, 0.39)), (1.0, (0.51, 0.45, 0.42))]   # (lit, about the
+# skin's brightness beside it, as the concept's: a greyer sclera read as a small eyeball in a shaded socket,
+# a whiter one as pasted on) — and shaded under the lids by occlusion (SCLERA_AO, _sclera)
+SCLERA_AO = (0.003, 0.5)   # (the occlusion's reach, m, and its strength: the lid's shadow on the eyeball)
+LID_SHADOW = (0.002, 0.4)   # the upper lid's contact shadow on the eyeball: (reach below the lid's edge, m;
+# the value at the edge) — the concept's white is darkest in the ~2 px under the lid (0.15-0.4, then 0.4-0.7 of its
+# middle; at 1 mm only the first row darkened)
+MEDIAL = 1.8    # the white's lift at the inner corner (its albedo times this: the concept's medial white is ~0.95 of
+# the skin's value, ours was ~0.66 in the corner's shade)
 
 # the brow mask: a grid in face space (cm; x from the midline, z from the pupils)
 GRID = {'x0': -8.0, 'x1': 8.0, 'z0': -1.5, 'z1': 5.0, 'res': 0.02}
@@ -44,9 +62,20 @@ BROW_TOP = [(1250, 259.5), (1256, 258.0), (1262, 257.2), (1268, 257.8), (1274, 2
             (1286, 261.8), (1292, 263.2), (1297, 265.5)]
 BROW_THICK = [(1250, 3.5), (1256, 6.0), (1262, 7.4), (1270, 8.0), (1280, 8.6), (1290, 8.8), (1297, 6.0)]
 BROW_DENS = [(1250, 0.75), (1258, 0.95), (1280, 0.95), (1292, 0.7), (1297, 0.45)]
-# eyeliner: a band over the upper lash line (REF_EYE_UPPER), thickening to a short wing past the
-# outer corner (sheet px: its end and thickness)
-LINER_WING = (1249.0, 283.2)
+# eyeliner: the concept's dark upper lash band, measured (sheet px, both eyes): from the lid margin
+# (lib/face.REF_EYE_UPPER: the band's lower edge) up by LINER_TH px — 3 over the outer third, ~2.9 over
+# the iris, thinning to ~1.2 at the inner corner — and past the outer corner a short, nearly level wing,
+# its lower edge from REF_CORNER_ROW at the corner to its tip (LINER_WING)
+LINER_WING = (1252.3, 283.6)
+LINER_TH = [(1256.5, 3.2), (1260, 3.2), (1262, 3.0), (1264, 2.5), (1268, 2.8), (1272, 2.9), (1276, 2.5),
+            (1280, 2.4), (1284, 1.9), (1288.5, 1.2)]
+# and a soft lower lash line just under the lower lid's margin, from the outer corner to the iris'
+# centre (~45 % darker than the skin there), gone by 1277: the inner third has a bright rim instead
+LOWER_LINE = 0.35   # its strength (of the liner's)
+LOWER_LINE_X = (1256.5, 1272.0, 1277.0)
+# the concept's eye makeup (the liner and the lower lash line) is off unless RTS_MAKEUP=1: reviews of the
+# lids' shape judge the geometry, not paint (the textured look will carry its own makeup)
+MAKEUP = os.environ.get('RTS_MAKEUP') == '1'
 
 
 def brow_mask(ipd_cm):
@@ -66,14 +95,29 @@ def brow_mask(ipd_cm):
     inside = np.clip((row - top) / soft + 0.5, 0, 1) * np.clip((top + thick - row) / soft + 0.5, 0, 1)
     ends = np.clip((px - bx[0]) / 2.5, 0, 1) * np.clip((bx[-1] + 1.5 - px) / 3.0, 0, 1)   # rounded ends
     brow = inside * ends * dens * BROW_DENSITY
-    # liner: from the upper lash line up by ~1.3 px, widening to the wing
+    # liner (LINER_TH, LINER_WING): from the lid margin up, into the wing; at the outer corner the band
+    # stays at the wing's row where the margin itself turns down into the canthus
+    from scipy.interpolate import CubicSpline
     ux = [q[0] for q in face.REF_EYE_UPPER]
-    lash = np.interp(px, ux, [q[1] for q in face.REF_EYE_UPPER])
+    lash = CubicSpline(ux, [q[1] for q in face.REF_EYE_UPPER])(np.clip(px, ux[0], ux[-1]))   # (the trace, smooth)
     wing_t = np.clip((ux[0] - px) / (ux[0] - LINER_WING[0]), 0, 1)       # 0 at the corner, 1 at the wing's end
+    lash = np.where(px < ux[0] + 4, np.minimum(lash, REF_CORNER_ROW), lash)
     lash = np.where(px < ux[0], REF_CORNER_ROW + (LINER_WING[1] - REF_CORNER_ROW) * wing_t, lash)
-    th = np.where(px < ux[0], 1.9 * (1 - wing_t) + 0.3, 1.7 + 0.5 * np.clip((1275 - px) / 20, 0, 1))
-    liner = np.clip((lash - row + 0.3) / 0.6, 0, 1) * np.clip((row - (lash - th)) / 0.6, 0, 1)
-    liner *= np.clip((px - LINER_WING[0]) / 1.0, 0, 1) * np.clip((ux[-1] - 4 - px) / 4.0, 0, 1)
+    th0 = LINER_TH[0][1]
+    th = np.where(px < ux[0], th0 * (1 - wing_t) + 0.2, np.interp(px, *zip(*LINER_TH)))
+    # (over the margin's rim by 0.5 px — no pale rim between band and eyeball; its top feathered:
+    # lashes, not paint)
+    liner = np.clip((lash - row + 0.5) / 0.6, 0, 1) * np.clip((row - (lash - th)) / 1.0 + 0.4, 0, 1)
+    liner *= np.clip((px - LINER_WING[0]) / 1.0, 0, 1) * np.clip((ux[-1] - px) / 2.0, 0, 1)
+    # and the soft lower lash line (LOWER_LINE): from 0.5 to 1.8 px under the lower lid's margin
+    lx = [q[0] for q in face.REF_EYE_LOWER]
+    low = np.interp(px, lx, [q[1] for q in face.REF_EYE_LOWER])
+    band = np.clip((row - (low + 0.5)) / 0.5 + 0.5, 0, 1) * np.clip(((low + 1.8) - row) / 0.6 + 0.5, 0, 1)
+    x0, x1, x2 = LOWER_LINE_X
+    band *= np.clip((px - x0) / 1.5, 0, 1) * np.clip((x2 - px) / (x2 - x1), 0, 1)
+    liner = np.maximum(liner, LOWER_LINE * band)
+    if not MAKEUP:
+        liner = np.zeros_like(liner)
     return brow, liner
 
 
@@ -113,6 +157,14 @@ def _inside(pts, poly):
     x1, y1 = np.roll(poly[:, 0], -1)[None, :], np.roll(poly[:, 1], -1)[None, :]
     cross = ((y0 > y) != (y1 > y)) & (x < (x1 - x0) * (y - y0) / np.where(y1 != y0, y1 - y0, 1e-12) + x0)
     return cross.sum(1) % 2 == 1
+
+
+def _ring_dist(P, ring):
+    """Distance of the 2D points P from the closed polyline ring."""
+    A, B = ring, np.roll(ring, -1, axis=0)
+    AB = B - A
+    t = np.clip((((P[:, None] - A[None]) * AB[None]).sum(-1)) / np.maximum((AB ** 2).sum(-1), 1e-12)[None], 0, 1)
+    return np.linalg.norm(P[:, None] - (A[None] + t[..., None] * AB[None]), axis=-1).min(1)
 
 
 def _projection_material(name, grid_img, eye_z, lip_attr):
@@ -163,9 +215,19 @@ def _projection_material(name, grid_img, eye_z, lip_attr):
     hair.inputs['To Min'].default_value = 0.85; hair.inputs['To Max'].default_value = 1.15
     brow = nt.nodes.new('ShaderNodeMath'); brow.operation = 'MULTIPLY'; brow.use_clamp = True
     nt.links.new(brow0.outputs[0], brow.inputs[0]); nt.links.new(hair.outputs['Result'], brow.inputs[1])
-    liner_fwd = nt.nodes.new('ShaderNodeMapRange')   # (the lid margin turns down/in: a looser mask)
-    nt.links.new(sepn.outputs['Y'], liner_fwd.inputs['Value'])
-    liner_fwd.inputs['From Min'].default_value = 0.1; liner_fwd.inputs['From Max'].default_value = -0.35
+    # (the upper lid's margin turns down: a looser mask, facing forward or down — not sideways, where a
+    # front projection stretches)
+    down = nt.nodes.new('ShaderNodeMath'); down.operation = 'MULTIPLY'; down.inputs[1].default_value = -0.8
+    nt.links.new(sepn.outputs['Z'], down.inputs[0])
+    down_c = nt.nodes.new('ShaderNodeMath'); down_c.operation = 'MAXIMUM'; down_c.inputs[1].default_value = 0.0
+    nt.links.new(down.outputs[0], down_c.inputs[0])
+    fwd = nt.nodes.new('ShaderNodeMath'); fwd.operation = 'MULTIPLY'; fwd.inputs[1].default_value = -1.0
+    nt.links.new(sepn.outputs['Y'], fwd.inputs[0])
+    facing = nt.nodes.new('ShaderNodeMath'); facing.operation = 'ADD'
+    nt.links.new(fwd.outputs[0], facing.inputs[0]); nt.links.new(down_c.outputs[0], facing.inputs[1])
+    liner_fwd = nt.nodes.new('ShaderNodeMapRange')
+    nt.links.new(facing.outputs[0], liner_fwd.inputs['Value'])
+    liner_fwd.inputs['From Min'].default_value = -0.1; liner_fwd.inputs['From Max'].default_value = 0.35
     liner = nt.nodes.new('ShaderNodeMath'); liner.operation = 'MULTIPLY'
     nt.links.new(sepc.outputs[1], liner.inputs[0]); nt.links.new(liner_fwd.outputs['Result'], liner.inputs[1])
     attr = nt.nodes.new('ShaderNodeAttribute'); attr.attribute_name = lip_attr
@@ -184,7 +246,16 @@ def _projection_material(name, grid_img, eye_z, lip_attr):
     mix_e = nt.nodes.new('ShaderNodeMix'); mix_e.data_type = 'RGBA'
     nt.links.new(mix_b.outputs['Result'], mix_e.inputs['A']); mix_e.inputs['B'].default_value = (*LASH, 1)
     nt.links.new(liner.outputs[0], mix_e.inputs['Factor'])
-    nt.links.new(mix_e.outputs['Result'], bsdf.inputs['Base Color'])
+    # the outer corners' recess (character/look._conjunctiva's weight): dark, and no scattering
+    rc = nt.nodes.new('ShaderNodeAttribute'); rc.attribute_name = 'recess'
+    mix_r = nt.nodes.new('ShaderNodeMix'); mix_r.data_type = 'RGBA'
+    nt.links.new(mix_e.outputs['Result'], mix_r.inputs['A']); mix_r.inputs['B'].default_value = RECESS_SKIN
+    nt.links.new(rc.outputs['Fac'], mix_r.inputs['Factor'])
+    nt.links.new(mix_r.outputs['Result'], bsdf.inputs['Base Color'])
+    sss = nt.nodes.new('ShaderNodeMapRange'); sss.clamp = True
+    nt.links.new(rc.outputs['Fac'], sss.inputs['Value'])
+    sss.inputs['To Min'].default_value = 0.15; sss.inputs['To Max'].default_value = 0.0
+    nt.links.new(sss.outputs['Result'], bsdf.inputs['Subsurface Weight'])
     # lips: a little glossier
     rough = nt.nodes.new('ShaderNodeMapRange')
     nt.links.new(sepl.outputs[0], rough.inputs['Value'])
@@ -211,7 +282,7 @@ def _lashes(p, arm):
         # the base direction's forward / outward / up mix
         for lid, (n, L0, L1, curl, mix) in zip(face.lash_roots(V, side),
                                               ((140, 0.0022, 0.0075, 0.45, (0.82, 0.22, 0.02)),
-                                               (36, 0.0010, 0.0026, -0.10, (0.62, 0.40, -0.25)))):
+                                               (28, 0.0007, 0.0018, -0.10, (0.70, 0.30, -0.25)))):
             P = V[lid]
             P = P[np.argsort(P[:, 0])]
             seg = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
@@ -267,6 +338,73 @@ def _iris(eye_mat):
             e.color = (*(np.interp(f_of(e.position), [q[0] for q in IRIS], [q[1][k] for q in IRIS]) for k in range(3)), 1)
 
 
+def _conjunctiva(body, Vw, p, arm):
+    """The tissue inside the lid margins — the caruncle at the inner corner, the lids' inner rims, the
+    socket around the globe — moist and pink, not skin (shaded skin there reads as raw red flesh):
+    the faces inside the opening in the front view (lib/face.aperture_ring: the lash strips' roots,
+    closed through the corners) and behind the margins."""
+    from character import woman
+    mat = bpy.data.materials.get('conjunctiva') or bpy.data.materials.new('conjunctiva')
+    mat.use_nodes = True
+    b = mat.node_tree.nodes['Principled BSDF']
+    b.inputs['Base Color'].default_value = CONJUNCTIVA
+    b.inputs['Roughness'].default_value = 0.45   # (glossier, it glinted white at the inner corner)
+    b.inputs['Subsurface Weight'].default_value = 0.0   # (scattering glowed red in the thin, shadowed corners)
+    b.inputs['Subsurface Radius'].default_value = (0.004, 0.0015, 0.001)
+    body.data.materials.append(mat)
+    V = woman.rest_vertices(p)
+    H = woman.head_pose(arm)
+    # toward the outer corners (beyond 0.75-0.95 of the eyeball's radius out from its centre) the recess:
+    # RECESS, blended in by position (a material of its own showed its faces' steps)
+    g = mh.load_base()['groups']
+    E = V[sorted(g['helper-l-eye'])] @ H[:3, :3].T + H[:3, 3]
+    cx, r = abs(E.mean(0)[0]), np.linalg.norm(E - E.mean(0), axis=1).mean()
+    nt = mat.node_tree
+    if not nt.nodes.get('RECESS_MIX'):
+        geo = nt.nodes.new('ShaderNodeNewGeometry')
+        sx = nt.nodes.new('ShaderNodeSeparateXYZ'); nt.links.new(geo.outputs['Position'], sx.inputs[0])
+        ab = nt.nodes.new('ShaderNodeMath'); ab.operation = 'ABSOLUTE'; nt.links.new(sx.outputs['X'], ab.inputs[0])
+        fr = nt.nodes.new('ShaderNodeMapRange'); fr.clamp = True; nt.links.new(ab.outputs[0], fr.inputs['Value'])
+        fr.inputs['From Min'].default_value, fr.inputs['From Max'].default_value = cx + 0.75 * r, cx + 0.95 * r
+        mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.name = 'RECESS_MIX'
+        nt.links.new(fr.outputs['Result'], mx.inputs['Factor'])
+        mx.inputs[6].default_value, mx.inputs[7].default_value = CONJUNCTIVA, RECESS
+        nt.links.new(mx.outputs[2], b.inputs['Base Color'])
+    near = np.zeros(len(Vw), bool)
+    for side in ('l', 'r'):
+        up, lo = face.lash_roots(V, side)
+        U, L = (V[q] @ H[:3, :3].T + H[:3, 3] for q in (up, lo))
+        ring = face.aperture_ring(V @ H[:3, :3].T + H[:3, 3], side)
+        inside = _inside(Vw[:, [0, 2]], ring)
+        behind = Vw[:, 1] > min(U[:, 1].min(), L[:, 1].min()) - 0.0005
+        near |= inside & behind
+    idx = np.array([f.index for f in body.data.polygons if all(near[v] for v in f.vertices)], int)
+    mi = np.zeros(len(body.data.polygons), int)
+    mi[idx] = 1
+    body.data.polygons.foreach_set('material_index', mi)
+    # the skin around the outer corners' recess, as a weight per vertex for skin's material (smooth
+    # across the faces — a face selection showed its steps): behind the local lid margin (0.5 to 2 mm
+    # deeper than the nearest margin vertex in the front view), beyond the eyeball's side, inside the
+    # opening (fading out over 0.3 mm: the lid skin beyond the corner wraps back as deep, and dark there
+    # read as grey smudges); skin there scattered light into a red glow, where a real recess sits in shadow
+    Va = V @ H[:3, :3].T + H[:3, 3]
+    w = np.zeros(len(Vw))
+    for side in ('l', 'r'):
+        up, lo = face.lash_roots(V, side)
+        M = Va[np.r_[up, lo, list(face.canthi(side))]]
+        e = Va[sorted(g[f'helper-{side}-eye'])].mean(0)
+        cand = np.flatnonzero(np.hypot(Vw[:, 0] - e[0], Vw[:, 2] - e[2]) < 2 * r)
+        d2 = ((Vw[cand][:, None, [0, 2]] - M[None, :, [0, 2]]) ** 2).sum(-1)
+        k = d2.argmin(1)
+        depth = Vw[cand, 1] - M[k, 1]
+        lat = (Vw[cand, 0] - e[0]) * np.sign(e[0]) / r
+        ins = _inside(Vw[cand][:, [0, 2]], face.aperture_ring(Va, side))
+        prox = np.where(ins, 1.0, np.clip(1 - _ring_dist(Vw[cand][:, [0, 2]], face.aperture_ring(Va, side)) / 0.0003, 0, 1))
+        w[cand] = np.maximum(w[cand], np.clip((depth - 0.0005) / 0.0015, 0, 1) * np.clip((lat - 0.6) / 0.25, 0, 1) * prox)
+    a = body.data.attributes.get('recess') or body.data.attributes.new('recess', 'FLOAT', 'POINT')
+    a.data.foreach_set('value', w.astype(np.float32))
+
+
 def apply(body, arm, p):
     V = np.array([v.co for v in body.data.vertices])
     mw = np.array(body.matrix_world)
@@ -288,5 +426,130 @@ def apply(body, arm, p):
     mat = _projection_material('skin_look', img, eye_l.z, 'lips')
     body.data.materials.clear()
     body.data.materials.append(mat)
+    if bpy.data.objects.get('cornea.l'):   # (the eye system's eyes: see character/woman.add_eyes)
+        _conjunctiva(body, Vw, p, arm)
     _iris(bpy.data.materials['eye'])
+    _sclera(bpy.data.materials['eye'], p)
     return _lashes(p, arm)
+
+
+def _sclera(eye_mat, p=None):
+    """The sclera's ramp (character/woman.eye_material: by the angle from the axis) in SCLERA, and the
+    eyeball's colour darkened by ambient occlusion within SCLERA_AO's reach: the lids' shadow on it
+    (lit evenly, the white under the upper lid was its brightest — the concept's is in shadow); and,
+    with the eye system's eyes, the upper lid's contact shadow (LID_SHADOW) under its rendered edge."""
+    nt = eye_mat.node_tree
+    ramps = [n for n in nt.nodes if n.type == 'VALTORGB' and n.name != 'IRIS_RAMP']
+    if len(ramps) != 1 or len(ramps[0].color_ramp.elements) != len(SCLERA):
+        return
+    for e, (pos, col) in zip(sorted(ramps[0].color_ramp.elements, key=lambda e: e.position), SCLERA):
+        e.position, e.color = pos, (*col, 1)
+    bsdf = next(n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED')
+    link = bsdf.inputs['Base Color'].links[0] if bsdf.inputs['Base Color'].links else None
+    if link is None or nt.nodes.get('SCLERA_AO'):
+        return
+    # the upper band of the eyeball (its local z over its radius, from 0 to 0.3): the lid shades it — the
+    # occlusion counted there only (in the inner corner's pocket it darkened the white the concept keeps
+    # bright), and its gloss cut (the rig's broad lights lit the white under the lid brightest)
+    tc = nt.nodes.new('ShaderNodeTexCoord')
+    nrm = nt.nodes.new('ShaderNodeVectorMath'); nrm.operation = 'NORMALIZE'
+    nt.links.new(tc.outputs['Object'], nrm.inputs[0])
+    sep = nt.nodes.new('ShaderNodeSeparateXYZ'); nt.links.new(nrm.outputs['Vector'], sep.inputs[0])
+    top = nt.nodes.new('ShaderNodeMapRange'); top.clamp = True
+    nt.links.new(sep.outputs['Z'], top.inputs['Value'])
+    top.inputs['From Min'].default_value, top.inputs['From Max'].default_value = 0.0, 0.3
+    ao = nt.nodes.new('ShaderNodeAmbientOcclusion'); ao.name = 'SCLERA_AO'
+    ao.inputs['Distance'].default_value = SCLERA_AO[0]
+
+    def mathn(op, a, b):
+        m = nt.nodes.new('ShaderNodeMath'); m.operation = op
+        for k, v in enumerate((a, b)):
+            if isinstance(v, (int, float)):
+                m.inputs[k].default_value = v
+            else:
+                nt.links.new(v, m.inputs[k])
+        return m.outputs[0]
+    occ = mathn('MULTIPLY', mathn('SUBTRACT', 1.0, ao.outputs['AO']), top.outputs['Result'])
+    shade = mathn('SUBTRACT', 1.0, mathn('MULTIPLY', occ, SCLERA_AO[1]))
+    mul = nt.nodes.new('ShaderNodeMix'); mul.data_type = 'RGBA'; mul.blend_type = 'MULTIPLY'
+    mul.inputs['Factor'].default_value = 1.0
+    nt.links.new(link.from_socket, mul.inputs[6])
+    nt.links.new(shade, mul.inputs[7])
+    nt.links.new(mul.outputs[2], bsdf.inputs['Base Color'])
+    sl = bsdf.inputs['Specular IOR Level'].links
+    if sl:
+        nt.links.new(mathn('MULTIPLY', sl[0].from_socket, mathn('SUBTRACT', 1.0, mathn('MULTIPLY', top.outputs['Result'], 0.7))),
+                     bsdf.inputs['Specular IOR Level'])
+    lid = _lid_edge(p) if p is not None and bpy.data.objects.get('cornea.l') else None
+    if lid is None:
+        return
+    # the upper lid's contact shadow: by the height under the lid's rendered edge (lib/face.opening, in
+    # the eyeball's own frame: a curve of the lateral offset — the eyes mirrored by their side), darkest
+    # at the edge, gone LID_SHADOW[0] below it; on the iris too, and the gloss with it
+    u_s, z_s, r = lid
+    sx = nt.nodes.new('ShaderNodeSeparateXYZ'); nt.links.new(tc.outputs['Object'], sx.inputs[0])
+    ol = nt.nodes.new('ShaderNodeSeparateXYZ'); nt.links.new(nt.nodes.new('ShaderNodeObjectInfo').outputs['Location'], ol.inputs[0])
+    sgn = mathn('SIGN', ol.outputs['X'], 0.0)
+    t = mathn('MULTIPLY_ADD', mathn('MULTIPLY', sx.outputs['X'], sgn), 0.5 / r)
+    t.node.inputs[2].default_value = 0.5
+    fc = nt.nodes.new('ShaderNodeFloatCurve'); fc.name = 'LID_EDGE'
+    nt.links.new(t, fc.inputs['Value'])
+    cv = fc.mapping.curves[0]
+    pts = list(zip((u_s / r + 1) / 2, (z_s / r + 1) / 2))
+    while len(cv.points) < len(pts):
+        cv.points.new(0.0, 0.0)
+    for q, (a, b) in zip(cv.points, pts):
+        q.location = (float(a), float(b)); q.handle_type = 'VECTOR'
+    fc.mapping.clip_min_y, fc.mapping.clip_max_y = -1.0, 2.0
+    fc.mapping.update()
+    zm = mathn('MULTIPLY_ADD', fc.outputs['Value'], 2 * r)
+    zm.node.inputs[2].default_value = -r
+    d = mathn('SUBTRACT', zm, sx.outputs['Z'])                     # (m below the lid's edge)
+    band = nt.nodes.new('ShaderNodeMapRange'); band.interpolation_type = 'SMOOTHSTEP'; band.clamp = True
+    nt.links.new(d, band.inputs['Value'])
+    band.inputs['From Min'].default_value, band.inputs['From Max'].default_value = 0.0, LID_SHADOW[0]
+    band.inputs['To Min'].default_value, band.inputs['To Max'].default_value = LID_SHADOW[1], 1.0
+    # and the white toward the inner corner lifted (MEDIAL: from 0.5 to 0.8 of the radius in, beyond the iris):
+    # the corner's pocket shades it, where the concept's white stays bright to the caruncle (the white
+    # ending short of the corner read as an eyeball too small for its socket)
+    med = nt.nodes.new('ShaderNodeMapRange'); med.clamp = True
+    nt.links.new(mathn('MULTIPLY', mathn('MULTIPLY', sx.outputs['X'], sgn), -1.0 / r), med.inputs['Value'])
+    med.inputs['From Min'].default_value, med.inputs['From Max'].default_value = 0.5, 0.8
+    med.inputs['To Min'].default_value, med.inputs['To Max'].default_value = 1.0, MEDIAL
+    lift = mathn('MULTIPLY', band.outputs['Result'], med.outputs['Result'])
+    mul2 = nt.nodes.new('ShaderNodeMix'); mul2.data_type = 'RGBA'; mul2.blend_type = 'MULTIPLY'
+    mul2.inputs['Factor'].default_value = 1.0
+    nt.links.new(mul.outputs[2], mul2.inputs[6]); nt.links.new(lift, mul2.inputs[7])
+    nt.links.new(mul2.outputs[2], bsdf.inputs['Base Color'])
+    sl = bsdf.inputs['Specular IOR Level'].links
+    if sl:
+        nt.links.new(mathn('MULTIPLY', sl[0].from_socket, band.outputs['Result']), bsdf.inputs['Specular IOR Level'])
+
+
+def _lid_edge(p):
+    """The upper lid's rendered edge over the left eyeball (lib/face.opening), in the eyeball's frame
+    (character/woman.add_eyes: the helper's mean, set back by eye_depth; looking straight ahead, or down):
+    (lateral offsets, heights, the eyeball's radius) in m, across the eyeball's width — the ends held
+    level beyond the corners. None where the face isn't symmetric or the eyes not straight ahead."""
+    from character import woman
+    fm = p.get('face_model') or {}
+    gz = fm.get('gaze') or {}
+    if not fm.get('symmetric') or not gz.get('straight') or gz.get('out'):
+        return None
+    V = woman.rest_vertices(p)
+    g = mh.load_base()['groups']
+    E = V[sorted(g['helper-l-eye'])]
+    c = E.mean(0) + np.array([0.0, p.get('eye_depth', 0.0), 0.0])
+    r = float(np.linalg.norm(E - c, axis=1).mean())
+    u = np.linspace(-0.98 * r, 0.98 * r, 41)
+    top, _ = face.opening(V, (c[0] + u) * 100, 'l', eye_depth=p.get('eye_depth', 0.0))
+    z = face.eye_centre(V, 'l')[2] + np.asarray(top, float) / 100 - c[2]
+    ok = np.isfinite(z)
+    if ok.sum() < 4:
+        return None
+    z = np.interp(u, u[ok], z[ok])
+    a = np.radians(gz.get('down', 0.0))
+    if a:   # (an eye looking down: its frame turned about x — the edge's points on its front, in that frame)
+        y = -np.sqrt(np.maximum(r * r - u * u - z * z, 0))
+        z = z * np.cos(a) - y * np.sin(a)
+    return u, z, r

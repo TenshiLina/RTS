@@ -159,7 +159,7 @@ def region(out, z0, z1, views=('front', 'side', 'q34'), k=4, samples=48, offset=
 
 def faces(out, eye_l, eye_r, chin_z, samples=96, iris_forward=0.0):
     """Front and profile close-ups at the close-ups' scale: the front aligned on the pupils
-    (sheet: 1274/1344, row 282), the profile on the eye line and scaled by eye-to-chin (sheet: eye
+    (lib/face.REF_FRONT), the profile on the eye line and scaled by eye-to-chin (sheet: eye
     row 712, chin row 820). iris_forward: how far the eye's front (the upper lid's) is in front of the
     eyeball centres (the profile is aligned on it: the concept's eye front is column 1217.5)."""
     sc = bpy.context.scene
@@ -172,12 +172,14 @@ def faces(out, eye_l, eye_r, chin_z, samples=96, iris_forward=0.0):
     mid = (Vector(eye_l) + Vector(eye_r)) / 2
     ipd = (Vector(eye_l) - Vector(eye_r)).length
     shots = []
-    # front: crop (1175..1448, 190..470) at ipd / 70 px
-    s = ipd / 70.0
+    # front: crop (1175..1448, 190..470), our pupils on the concept's (lib/face.REF_FRONT)
+    from . import face
+    f = face.REF_FRONT
+    s = ipd / (f['pupil_r'][0] - f['pupil_l'][0])
     box = (1175, 190, 1448, 470)
     W, Hh = (box[2] - box[0]) * 2, (box[3] - box[1]) * 2
-    cx = ((box[0] + box[2]) / 2 - 1309) * s
-    cz = -((box[1] + box[3]) / 2 - 282) * s
+    cx = ((box[0] + box[2]) / 2 - f['mid_x']) * s
+    cz = -((box[1] + box[3]) / 2 - f['pupil_l'][1]) * s
     shots.append(('face_front', 0, mid + Vector((cx, 0, cz)), (box[3] - box[1]) * s, W, Hh, box))
     # profile: crop (1180..1380, 620..860), eye row 715, chin row 818.75 (as lib/face.py)
     sp = (mid.z - chin_z) / 103.75

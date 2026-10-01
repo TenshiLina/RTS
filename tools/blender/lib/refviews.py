@@ -21,9 +21,9 @@ SHEET = os.path.join(ROOT, 'docs/art/factions/human/human-female-turnaround.webp
 YAW_Q34 = 36.0
 
 # ---- the concept, traced (sheet px)
-# front close-up: the irises (centre, radius) — both 12 px across (0.17 of the eyes' spacing),
-# touching the upper lid's margin and the lower's at the pupil: no sclera shows above or below
-FRONT_EYE = {'iris_l': (1272.5, 283.75, 6.0), 'iris_r': (1344.5, 283.75, 6.0)}
+# front close-up: the irises (centre, radius: circles fitted to their edges row by row) — 14 px across,
+# 0.195 of the eyes' spacing; the lids cover their top and bottom edges: no sclera above or below
+FRONT_EYE = {'iris_l': (1272.55, 283.0, 7.0), 'iris_r': (1344.4, 283.0, 7.0)}
 # profile close-up: the lateral canthus (where the lids meet: the white's end, the upper lash line runs
 # on) and the lower lid's front
 PROFILE_EYE = {'canthus_lat': (1236.5, 716.0), 'lid_lower': (1222.5, 720.0)}
@@ -207,6 +207,17 @@ def ours(V, H=None, gaze=None, iris_cos=IRIS_COS, iris_d=None):
           'nose_tip': pose(mids[np.argmin(uu)])}
     for k in ('subnasale', 'menton'):
         P3[k] = pose(np.array([0.0, lf + prof[k][0] / 100, eye[2] + prof[k][1] / 100]))
+    # the eye's opening as rendered (lib/face.opening: the skin's rim against the eyeball, not the lash
+    # line): its corners (the outermost open columns), the lids over the pupil
+    xs = np.arange(1.0, 5.0, 0.02)
+    top, bot = face.opening(V, xs)
+    op = np.where(~np.isnan(top))[0]
+    if len(op):
+        ko, ki = op.max(), op.min()
+        front['eye_outer'] = (xs[ko], (top[ko] + bot[ko]) / 2)
+        front['eye_inner'] = (xs[ki], (top[ki] + bot[ki]) / 2)
+        tp, bp = face.opening(V, [front['iris'][0]])
+        front['lid_upper'], front['lid_lower'] = (front['iris'][0], tp[0]), (front['iris'][0], bp[0])
     o, i = front['eye_outer'], front['eye_inner']
     sc = {'iris_d': 2 * ri * 100, 'aperture_w': o[0] - i[0], 'aperture_h': front['lid_upper'][1] - front['lid_lower'][1],
           'canthal_tilt': np.degrees(np.arctan2(o[1] - i[1], o[0] - i[0])),
@@ -223,20 +234,28 @@ def fit_q34(ref, our):
     """The 3/4 view compared as shapes: the concept's 3/4 face is not the same head seen at 36 degrees
     (its eyes project 5.6 cm apart, which at 36 degrees needs a 6.9 cm spacing; the front says 5.7), so
     fit the view's yaw (15-55 degrees) and scale and an offset to it (least squares over the shared
-    landmarks), then compare. Returns (yaw, scale, {name: (u, v)} ours in the concept's frame)."""
+    landmarks), then compare — and its roll: the concept's head there is tilted (its far pupil ~3 px
+    below the near one), turned in the picture's plane. Returns (yaw, scale, {name: (u, v)} ours in
+    the concept's frame, roll in degrees)."""
     keys = [k for k in ref['q34'] if k in our['_q34_3d']]
     R = np.array([ref['q34'][k] for k in keys])
     P = np.array([our['_q34_3d'][k] for k in keys]) * 100
     best = None
+    Rc = R - R.mean(0)
     for yaw in np.arange(15.0, 55.1, 0.5):
         a = np.radians(yaw)
         Q = np.c_[P @ [np.cos(a), np.sin(a), 0.0], P[:, 2]]
-        Qc, Rc = Q - Q.mean(0), R - R.mean(0)
-        sc = (Qc * Rc).sum() / (Qc * Qc).sum()
-        err = ((sc * Qc - Rc) ** 2).sum()
+        Qc = Q - Q.mean(0)
+        # (2D Procrustes: the rotation and scale best taking Qc onto Rc)
+        A = (Qc * Rc).sum(); B = (Qc[:, 0] * Rc[:, 1] - Qc[:, 1] * Rc[:, 0]).sum()
+        th = np.arctan2(B, A)
+        c, s_ = np.cos(th), np.sin(th)
+        Qr = np.c_[c * Qc[:, 0] - s_ * Qc[:, 1], s_ * Qc[:, 0] + c * Qc[:, 1]]
+        sc = (Qr * Rc).sum() / (Qr * Qr).sum()
+        err = ((sc * Qr - Rc) ** 2).sum()
         if best is None or err < best[0]:
-            best = (err, yaw, sc, {k: tuple(sc * q + R.mean(0)) for k, q in zip(keys, Qc)})
-    return best[1], best[2], best[3]
+            best = (err, yaw, sc, {k: tuple(sc * q + R.mean(0)) for k, q in zip(keys, Qr)}, np.degrees(th))
+    return best[1], best[2], best[3], best[4]
 
 
 EYE_SCALARS = [('iris_d', 'iris diameter'), ('aperture_w', 'aperture width (canthus to canthus)'),
@@ -254,8 +273,8 @@ def table(ref, our):
     for k, label in EYE_SCALARS:
         f = 1 if k == 'canthal_tilt' else 10
         rows.append(('eye', label, ref['scalars'][k] * f, our['scalars'][k] * f, (our['scalars'][k] - ref['scalars'][k]) * f))
-    yaw, scale, q34 = fit_q34(ref, our)
-    rows.append(('q34', f'(fitted view: yaw {yaw:.1f} deg, scale {scale:.3f})', 0.0, 0.0, 0.0))
+    yaw, scale, q34, roll = fit_q34(ref, our)
+    rows.append(('q34', f'(fitted view: yaw {yaw:.1f} deg, roll {roll:+.1f}, scale {scale:.3f})', 0.0, 0.0, 0.0))
     for view in ('front', 'profile', 'q34'):
         mine = q34 if view == 'q34' else our[view]
         for k, v in ref[view].items():

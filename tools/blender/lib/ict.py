@@ -649,17 +649,27 @@ def eye_warp(V, prm):
     return V
 
 
-def eye_system(V, prm):
-    """The eye as one system: each globe resized to 'r' (m) — the model's eyeball shell is ~16 mm,
-    anatomical globes ~11.5-12.5 mm: a globe that large fills the socket and pushes the lids out onto
-    its front — its front kept at the pupil and set back by 'back' (m); the lids and the skin around
-    them settle onto the new globe in depth only: each keeps its offset from the globe's surface and
-    its place in the front view (the aperture's traced outline stays), so the lids wrap the smaller
-    globe and its corners go back — the lateral canthus toward the concept's, 2 cm behind the upper
-    lid's front. Beyond the globe's outline (where the canthi are) the surface continues along its
-    tangent, 'wrap' steepening it. The skin within 2 mm of the old globe goes all the way, none
-    from 8 mm above the pupil (the orbital rim and the brow stay) or 12 mm below it, nor lateral of
-    2.4 cm from the eye's axis; the lashes follow their roots, the lid joints the skin."""
+def _inside(P, poly):
+    """Which of the 2D points P are inside the polygon poly (even-odd rule)."""
+    x, y = P[:, 0], P[:, 1]
+    inside = np.zeros(len(P), bool)
+    for (x1, y1), (x2, y2) in zip(poly, np.roll(poly, -1, axis=0)):
+        cross = (y1 > y) != (y2 > y)
+        xi = x1 + (y - y1) * (x2 - x1) / np.where(y2 != y1, y2 - y1, 1e-12)
+        inside ^= cross & (x < xi)
+    return inside
+
+
+def lid_drape(V, prm):
+    """The lids draped over the eyeball, the eyeball theirs: the lids and the skin around them set in
+    depth on a sphere of radius 'r' (m) centred under the pupil, its front at the pupil set back by
+    'back' (m) — each keeps its offset from the model's eyeball shell and its place in the front view
+    (the opening's outline, fitted in front, stays) — and beyond the sphere's outline (the canthi)
+    continuing along its tangent, 'wrap' steepening it. The eyeball is then that sphere: sized to the
+    lids, not the lids to it (or 'globe': a larger one set back by 'seat' behind the lids). The lid
+    margins and the socket inside the opening drape; the skin around
+    follows its nearest margin, fading out 2-12 mm from it (the brow, the orbital rim and the cheek
+    stay); the lashes follow their roots, the lid joints the skin."""
     if not prm or not prm.get('r'):
         return V
     from scipy.spatial import cKDTree
@@ -677,43 +687,190 @@ def eye_system(V, prm):
     for sd in ('l', 'r'):
         e = np.array(sorted(g[f'helper-{sd}-eye']))
         c0, r0 = sphere(V[e])
-        c1 = c0 + np.array([0.0, (r1 - r0) + back, 0.0])      # (the front at the pupil, set back by 'back')
+        c1 = c0 + np.array([0.0, (r1 - r0) + back, 0.0])      # (its front at the pupil, set back by 'back')
 
         def dy(P):
+            """The drape itself: on the new sphere, each point's offset from the shell kept."""
             rel = P - c0
             d0 = np.maximum(np.linalg.norm(rel, axis=1) - r0, -0.004)
             rho = np.hypot(rel[:, 0], rel[:, 2])
-            below = np.clip(-rel[:, 2] / 0.004, 0, 1)
-            t = np.clip((d0 - 0.002) / (0.006 + 0.004 * below), 0, 1)
-            w = 1 - t * t * (3 - 2 * t)
-            t = np.clip((rho - 0.018) / 0.006, 0, 1)
-            w *= 1 - t * t * (3 - 2 * t)
-            w *= rel[:, 1] < 0.004                               # (in front of the globe's centre)
-            return w * (front_depth(rho, r1 + d0, c1[1]) - front_depth(rho, r0 + d0, c0[1]))
+            return (rel[:, 1] < 0.004) * (front_depth(rho, r1 + d0, c1[1]) - front_depth(rho, r0 + d0, c0[1]))
         B = V[:mh.BODY_VERTS]
         near = np.where(np.linalg.norm(B - c0, axis=1) < r0 + 0.02)[0]
-        V[near, 1] += dy(B[near])
+        # the lid margins (the lash strips' roots) and the socket inside the opening drape on the sphere;
+        # the skin around follows its nearest margin, fading out 2-12 mm from it (the sphere's continuation
+        # would sink the cheek and the temple around the eye)
+        from . import face
+        up, lo = face.lash_roots(V, sd)
+        M = V[np.r_[up, lo]]
+        dM = dy(M)
+        dist, nn = cKDTree(M).query(B[near])
+        ring = np.r_[V[up][:, [0, 2]], V[lo][::-1][:, [0, 2]]]
+        inner = _inside(B[near][:, [0, 2]], ring) & (B[near][:, 1] > M[:, 1].min() - 0.0005)
+        t = np.clip((dist - 0.002) / 0.010, 0, 1)
+        D = np.where(inner, dy(B[near]), (1 - t * t * (3 - 2 * t)) * dM[nn])
+        joints = [np.array(sorted(g.get(grp, [])), int) for grp in (f'joint-{sd}-upperlid', f'joint-{sd}-lowerlid')]
+        jj = [cKDTree(B[near]).query(V[gi])[1] if len(gi) else None for gi in joints]
+        V[near, 1] += D
         for k in (1, 2):
             gi = np.array(sorted(g[f'helper-{sd}-eyelashes-{k}']))
             d = np.linalg.norm(V[gi] - c0, axis=1)
             root = gi[d < d.min() + 0.33 * (d.max() - d.min())]
             _, jj = cKDTree(V[root]).query(V[gi])
             V[gi, 1] += dy(V[root])[jj]
-        for grp in (f'joint-{sd}-upperlid', f'joint-{sd}-lowerlid'):
-            gi = np.array(sorted(g.get(grp, [])), int)
+        for gi, k in zip(joints, jj):
             if len(gi):
-                _, jj = cKDTree(B[near]).query(V[gi])
-                V[gi, 1] += dy(B[near][jj])
-        V[e] = c1 + (V[e] - c0) * (r1 / r0)
+                V[gi, 1] += D[k]
+        # the eyeball: the sphere the lids are draped on, or ('globe', m) a larger one set back ('seat', m,
+        # its front behind the sphere's) so it stays behind the lids — fuller in the corners
+        rg = prm.get('globe') or r1
+        cg = c1 + np.array([0.0, (rg - r1) + prm.get('seat', 0.0), 0.0])
+        V[e] = cg + (V[e] - c0) * (rg / r0)
         j = np.array(sorted(g[f'joint-{sd}-eye']))
-        V[j] += c1 - c0
+        V[j] += cg - c0
+    return V
+
+
+
+def margin_warp(V, prm):
+    """The lid margins set onto the traced ones in the front view: each lid's margin (its lash strip's
+    roots) moved up or down by a smooth profile across the eye — prm 'x' (m from the midline, outer
+    corner last), 'up' and 'lo' (m, + up) — the tissue inside the opening between them in proportion,
+    the skin around following its nearest margin and fading out 2-9 mm from it (the crease, the brow
+    and the cheek stay), the lashes with their roots, the lid joints with the skin; on the eyeball, the
+    lids slide over it (their distance from its centre kept). The fitted warps shape the lids with a
+    few broad parameters, which bent the margin where their falloffs overlapped; this lays it along
+    the trace. Both sides, mirrored."""
+    if not prm or not prm.get('x'):
+        return V
+    from scipy.spatial import cKDTree
+    from . import face
+    V = V.copy()
+    g = mh.load_base()['groups']
+    xs = np.asarray(prm['x'], float)
+    o = np.argsort(xs)
+    xs, du, dl = xs[o], np.asarray(prm['up'], float)[o], np.asarray(prm['lo'], float)[o]
+    for sd in ('l', 'r'):
+        sg = 1.0 if sd == 'l' else -1.0
+        c, rad = sphere(V[sorted(g[f'helper-{sd}-eye'])])
+        up, lo = face.lash_roots(V, sd)
+        prof = lambda P, d: np.interp(sg * P[:, 0], xs, d, left=0.0, right=0.0)
+        Mu, Ml = V[up], V[lo]
+        dMu, dMl = prof(Mu, du), prof(Ml, dl)
+        B = V[:mh.BODY_VERTS]
+        near = np.where(np.linalg.norm(B - c, axis=1) < rad + 0.02)[0]
+        P = B[near]
+        M = np.r_[Mu, Ml]
+        dM = np.r_[dMu, dMl]
+        dist, nn = cKDTree(M[:, [0, 2]]).query(P[:, [0, 2]])
+        ring = np.r_[Mu[:, [0, 2]], Ml[::-1][:, [0, 2]]]
+        inner = _inside(P[:, [0, 2]], ring) & (P[:, 1] > M[:, 1].min() - 0.0005)
+        # inside: between the margins, by height (each margin's height at the vertex's x)
+        xo = np.argsort(Mu[:, 0]); zu = np.interp(P[:, 0], Mu[xo, 0], Mu[xo, 2])
+        xo = np.argsort(Ml[:, 0]); zl = np.interp(P[:, 0], Ml[xo, 0], Ml[xo, 2])
+        t = np.clip((P[:, 2] - zl) / np.maximum(zu - zl, 1e-6), 0, 1)
+        d_in = prof(P, dl) + t * (prof(P, du) - prof(P, dl))
+        f = np.clip((dist - 0.002) / 0.007, 0, 1)
+        D = np.where(inner, d_in, (1 - f * f * (3 - 2 * f)) * dM[nn])
+        D *= (P[:, 1] - c[1]) < 0.012                     # (not the socket's back)
+        q = P - c
+        r0 = np.linalg.norm(q, axis=1)
+        q[:, 2] += D
+        on = np.clip((rad + 0.005 - r0) / 0.003, 0, 1) * (np.abs(D) > 0) * (q[:, 1] < 0)
+        y2 = -np.sqrt(np.maximum(r0 ** 2 - q[:, 0] ** 2 - q[:, 2] ** 2, 0))
+        q[:, 1] += on * (y2 - q[:, 1])
+        newP = c + q
+        joints = [np.array(sorted(g.get(grp, [])), int) for grp in (f'joint-{sd}-upperlid', f'joint-{sd}-lowerlid')]
+        jj = [cKDTree(P).query(V[gi])[1] if len(gi) else None for gi in joints]
+        # the lashes: each strip moved as its nearest root (before the skin moves)
+        for k in (1, 2):
+            gi = np.array(sorted(g[f'helper-{sd}-eyelashes-{k}']))
+            d = np.linalg.norm(V[gi] - c, axis=1)
+            root = gi[d < d.min() + 0.33 * (d.max() - d.min())]
+            _, kk = cKDTree(V[root]).query(V[gi])
+            Rq = V[root] - c
+            rr = np.linalg.norm(Rq, axis=1)
+            Dr = prof(V[root], du if np.isin(root, up).any() else dl)
+            Rn = Rq.copy(); Rn[:, 2] += Dr
+            onr = np.clip((rad + 0.005 - rr) / 0.003, 0, 1) * (Rn[:, 1] < 0)
+            Rn[:, 1] += onr * (-np.sqrt(np.maximum(rr ** 2 - Rn[:, 0] ** 2 - Rn[:, 2] ** 2, 0)) - Rn[:, 1])
+            V[gi] += (Rn - Rq)[kk]
+        for gi, k in zip(joints, jj):
+            if len(gi):
+                V[gi] += (newP - P)[k]
+        V[near] = newP
+    return V
+
+_edges = None
+
+
+def undereye(V, prm):
+    """The skin between the lower lid and the cheek smoothed in depth only (the front view stays):
+    the lid's roll and the groove under it — the model's lower lids are fuller than the concept's,
+    which run flat into the cheek — relaxed 'n' times ('flat': 0..1 of each step), fully from 2 mm
+    below the lower lid's margin to 9 mm, none within 1 mm of it or from 15 mm (the cheek), within
+    1.4 cm across the pupil, none from 2 cm."""
+    global _edges
+    if not prm or not prm.get('flat'):
+        return V
+    from . import face
+    if _edges is None:
+        F = mh.load_base()['F']
+        e = set()
+        for f in F:
+            for a, b in zip(f, f[1:] + f[:1]):
+                e.add((a, b) if a < b else (b, a))
+        _edges = np.array(sorted(e), dtype=np.int64)
+    E = _edges
+    V = V.copy()
+    n, flat = int(prm.get('n', 20)), float(prm['flat'])
+    B = V[:mh.BODY_VERTS]
+    w = np.zeros(mh.BODY_VERTS)
+    for sd in ('l', 'r'):
+        pc = face.eye_centre(V, sd)
+        _, lo = face.lash_roots(V, sd)
+        M = V[lo]
+        rel = B - pc
+        # below the margin: the height under the lower lid's margin at each vertex's x
+        o = np.argsort(M[:, 0])
+        zm = np.interp(B[:, 0], M[o, 0], M[o, 2])
+        d = zm - B[:, 2]
+        t1 = np.clip((d - 0.001) / 0.001, 0, 1)
+        t2 = np.clip((d - 0.009) / 0.006, 0, 1)
+        t3 = np.clip((np.abs(rel[:, 0]) - 0.014) / 0.006, 0, 1)
+        ww = (t1 * t1 * (3 - 2 * t1)) * (1 - t2 * t2 * (3 - 2 * t2)) * (1 - t3 * t3 * (3 - 2 * t3))
+        ww *= (rel[:, 1] < 0.004) & (np.abs(rel[:, 0]) < 0.03)
+        w = np.maximum(w, ww)
+    sel = w > 0
+    Es = E[sel[E[:, 0]] | sel[E[:, 1]]]
+    y = B[:, 1].copy()
+    # (the lids stay on the eyeball: no nearer than 0.6 mm in front of it, as the eye is built —
+    # character/woman.add_eyes: the helper's mean, its mean radius)
+    g = mh.load_base()['groups']
+    cap = np.full(mh.BODY_VERTS, np.inf)
+    for sd in ('l', 'r'):
+        Eh = V[sorted(g[f'helper-{sd}-eye'])]
+        c = Eh.mean(0)
+        r = np.linalg.norm(Eh - c, axis=1).mean()
+        rho2 = (B[:, 0] - c[0]) ** 2 + (B[:, 2] - c[2]) ** 2
+        inside = (rho2 < r * r) & sel
+        cap[inside] = np.minimum(cap[inside], c[1] - np.sqrt(r * r - rho2[inside]) - 0.0006)
+    cap = np.maximum(cap, np.where(np.isfinite(cap), B[:, 1], np.inf))    # (skin already nearer stays)
+    for _ in range(n):
+        acc = np.zeros(mh.BODY_VERTS); cnt = np.zeros(mh.BODY_VERTS)
+        np.add.at(acc, Es[:, 0], y[Es[:, 1]]); np.add.at(acc, Es[:, 1], y[Es[:, 0]])
+        np.add.at(cnt, Es[:, 0], 1); np.add.at(cnt, Es[:, 1], 1)
+        avg = np.where(cnt > 0, acc / np.maximum(cnt, 1), y)
+        y = np.minimum(y + flat * w * (avg - y), cap)
+    V[:mh.BODY_VERTS, 1] = y
     return V
 
 
 def lid_warp(V, prm):
     """The eyes' openings resized: the lids and the skin around them scaled about each eyeball's
     centre in the front view ('w' across, 'h' up and down) and turned ('tilt', degrees: the outer
-    corner up +), fully within 1.2 cm of the centre and
+    corner up +), and shortened from the outer corner ('len': the fraction lateral of the pupil
+    drawn in; the inner corner stays), fully within 1.2 cm of the centre and
     fading out by 2.2 cm, the lids sliding over the eyeball (they keep their distance from its
     centre, so they stay on it); the lashes and the lid joints go with them. The model's real
     faces have smaller openings than the concept's large eyes."""
@@ -745,6 +902,59 @@ def lid_warp(V, prm):
         y2 = np.sign(q[:, 1]) * np.sqrt(np.maximum(r0 ** 2 - q[:, 0] ** 2 - q[:, 2] ** 2, 0))
         q[:, 1] += on * (y2 - q[:, 1])
         V[idx[sel]] = c + q
+        ln = prm.get('len', 0.0)
+        if ln:   # (the opening shortened from its outer corner: lateral of the pupil, the lids and the
+            #  skin around them drawn toward it — full to 2 cm out, none from 3.2 cm; within 6 mm up and
+            #  down, none from 14 mm: the inner corner, the brow and the cheek stay)
+            rel = V[idx] - c
+            sg = 1 if sd == 'l' else -1
+            xl = sg * rel[:, 0]
+            t = np.clip((xl - 0.020) / 0.012, 0, 1)
+            wl = 1 - t * t * (3 - 2 * t)
+            t = np.clip((np.abs(rel[:, 2]) - 0.006) / 0.008, 0, 1)
+            wv = 1 - t * t * (3 - 2 * t)
+            wv *= rel[:, 1] < 0.006
+            q = rel.copy()
+            q[:, 0] -= sg * ln * np.maximum(xl, 0) * wl * wv
+            # (on the eyeball, the lids slide over it as they're drawn in: their distance from its
+            # centre kept — drawn straight in, the tissue at its side would sink into it)
+            r0 = np.linalg.norm(rel, axis=1)
+            on = np.clip((rad + 0.005 - r0) / 0.003, 0, 1) * (np.abs(q[:, 0] - rel[:, 0]) > 0)
+            y2 = np.sign(q[:, 1]) * np.sqrt(np.maximum(r0 ** 2 - q[:, 0] ** 2 - q[:, 2] ** 2, 0))
+            q[:, 1] += on * (y2 - q[:, 1])
+            V[idx] = c + q
+        up = prm.get('up', 0.0)
+        if up:   # (the upper lid lowered, m: above the eyeball's centre — full from 3 to 7 mm up, none at
+            #  its height or from 13 mm up (the brow); within 6 mm across, none from 14 mm — sliding
+            #  over the eyeball)
+            rel = V[idx] - c
+            zu = rel[:, 2]
+            wz = np.clip(zu / 0.003, 0, 1) * (1 - np.clip((zu - 0.007) / 0.006, 0, 1))
+            t = np.clip((np.abs(rel[:, 0]) - 0.006) / 0.008, 0, 1)
+            wz = wz * wz * (3 - 2 * wz) * (1 - t * t * (3 - 2 * t)) * (rel[:, 1] < 0.006)
+            q = rel.copy()
+            q[:, 2] -= up * wz
+            r0 = np.linalg.norm(rel, axis=1)
+            on = np.clip((rad + 0.005 - r0) / 0.003, 0, 1) * (wz > 0)
+            y2 = np.sign(q[:, 1]) * np.sqrt(np.maximum(r0 ** 2 - q[:, 0] ** 2 - q[:, 2] ** 2, 0))
+            q[:, 1] += on * (y2 - q[:, 1])
+            V[idx] = c + q
+        lo = prm.get('lo', 0.0)
+        if lo:   # (the lower lid raised, m: below the eyeball's centre — full from 4 to 8 mm down, none at
+            #  its height or from 16 mm down (the cheek); within 5 mm across, none from 14 mm (the
+            #  canthi stay) — sliding over the eyeball)
+            rel = V[idx] - c
+            zd = -rel[:, 2]
+            wz = np.clip(zd / 0.004, 0, 1) * (1 - np.clip((zd - 0.008) / 0.008, 0, 1))
+            t = np.clip((np.abs(rel[:, 0]) - 0.005) / 0.009, 0, 1)
+            wz = wz * wz * (3 - 2 * wz) * (1 - t * t * (3 - 2 * t)) * (rel[:, 1] < 0.006)
+            q = rel.copy()
+            q[:, 2] += lo * wz
+            r0 = np.linalg.norm(rel, axis=1)
+            on = np.clip((rad + 0.005 - r0) / 0.003, 0, 1) * (wz > 0)
+            y2 = np.sign(q[:, 1]) * np.sqrt(np.maximum(r0 ** 2 - q[:, 0] ** 2 - q[:, 2] ** 2, 0))
+            q[:, 1] += on * (y2 - q[:, 1])
+            V[idx] = c + q
     return V
 
 

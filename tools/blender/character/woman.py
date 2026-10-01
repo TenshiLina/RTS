@@ -78,9 +78,11 @@ def face_regional(p):
 def face_morph(p):
     """The head from the face model (lib/ict.py: p['face_model'] = {'coeffs', 'scale', 'dz',
     'ears', 'detail'}), as a function of all the vertices — or None (MakeHuman's own head).
-    'ears', 'lids', 'brow', 'eyes', 'eye_system': the ears' size and placement, the eyes' openings,
-    the brow ridge's flattening, the eyes' depth, the globes and the lids' wrap on them (ict.ear_warp,
-    lid_warp, brow_warp, eye_warp, eye_system; 'eye_system' also sizes the iris, add_eyes). 'detail': a
+    'ears', 'lids', 'brow', 'eyes', 'drape', 'undereye': the ears' size and placement, the eyes' openings, the
+    brow ridge's flattening, the eyes' depth, the lids draped over the eyeball that is theirs, the skin under the lower lids smoothed (ict.
+    ear_warp, lid_warp, brow_warp, eye_warp, lid_drape, undereye); 'margin': the lid margins laid along the
+    trace, last (ict.margin_warp, solved by character/fit_margin.py); 'globe': {'iris': m}, the built eye's iris
+    (add_eyes); 'symmetric': the model's face mirrored from its left side. 'detail': a
     few MakeHuman feature modifiers applied on the model's face (the lids' size, where the concept
     is beyond the real faces the model spans), {'group/l-name': value} for both sides."""
     fm = p.get('face_model')
@@ -97,15 +99,19 @@ def face_morph(p):
     def morph(V):
         s = mh.to_blender.scale            # (the scale of the to_blender call that made V)
         V = ict.apply(V, fm['coeffs'], scale=fm.get('scale', 1.0), dz=fm.get('dz', 0.0))
+        if fm.get('symmetric'):     # (the model's faces are real, asymmetric ones; the concept's is not)
+            V = mh.symmetrized(V)
         V = ict.ear_warp(V, fm.get('ears'))
         V = ict.lid_warp(V, fm.get('lids'))
         V = ict.brow_warp(V, fm.get('brow'))
         V = ict.eye_warp(V, fm.get('eyes'))
-        V = ict.eye_system(V, fm.get('eye_system'))
+        V = ict.lid_drape(V, fm.get('drape'))
+        V = ict.undereye(V, fm.get('undereye'))
         for name, w in tw.items():
             if w:
                 i, d = mh.read_target(os.path.join(mh.MH, 'targets', name + '.target'))
                 V[i] += w * mh.delta_to_blender(d, s)
+        V = ict.margin_warp(V, fm.get('margin'))      # (last: the margins laid along the trace)
         return neck_shift(V, p.get('neck_shift'))
     return morph
 
@@ -299,7 +305,8 @@ def eye_material(iris_r):
     """The eyeball's surface: the iris by the distance from the eyeball's forward axis (local -Y)
     over its radius iris_r (m) — pupil, iris, limbal ring (IRIS_RAMP; look.py recolours the iris
     band) — and outside it the sclera, by the angle from the axis (darker toward the sides); the
-    sclera wet (glossy), the iris matte under the cornea."""
+    sclera wet (glossy), the iris matte and without a gloss of its own under the cornea (a rough
+    specular layer on it reads as a grey sheen: the pupil goes grey)."""
     mat = bpy.data.materials.get('eye') or bpy.data.materials.new('eye')
     mat.use_nodes = True
     nt = mat.node_tree
@@ -359,6 +366,10 @@ def eye_material(iris_r):
     nt.links.new(m, rough.inputs['Value'])
     rough.inputs['To Min'].default_value, rough.inputs['To Max'].default_value = 0.12, 0.55
     nt.links.new(rough.outputs['Result'], bsdf.inputs['Roughness'])
+    spec = nt.nodes.new('ShaderNodeMapRange')          # (the iris has no gloss of its own: the cornea's)
+    nt.links.new(m, spec.inputs['Value'])
+    spec.inputs['To Min'].default_value, spec.inputs['To Max'].default_value = 0.5, 0.0
+    nt.links.new(spec.outputs['Result'], bsdf.inputs['Specular IOR Level'])
     return mat
 
 
@@ -382,9 +393,9 @@ def head_pose(arm):
 def add_eyes(arm, targets, p):
     """Eyeballs where MakeHuman's eye helpers are (sized and placed by the face model's eye system),
     carried by the head's pose, parented to the head bone; looking along the face model's gaze
-    (lib/ict.gaze) when there is one. With the face model's eye system (face_model.eye_system), each
+    (lib/ict.gaze) when there is one. With the eyeballs sized to the lids (face_model.globe), each
     as an eye is built: the globe with the iris a flat disc just behind the limbus (its diameter:
-    eye_system.iris, m), under a clear cornea — a steeper cap (0.65 of the globe's radius) from the
+    globe.iris, m), under a clear cornea — a steeper cap (0.65 of the globe's radius) from the
     limbus, bulging ~0.7 mm past the globe; the iris seen through it sits back from the lids, as in
     the concept's profile. Without it, the iris painted on the globe (eye_material_painted)."""
     from mathutils import Matrix
@@ -393,9 +404,9 @@ def add_eyes(arm, targets, p):
     V = rest_vertices(p)
     g = mh.load_base()['groups']
     fm = p.get('face_model') or {}
-    built = bool((fm.get('eye_system') or {}).get('iris'))    # (else the painted eye, as before the eye system)
+    built = bool((fm.get('globe') or {}).get('iris'))    # (else the painted eye, as before the eye system)
     if built:
-        iris_r = fm['eye_system']['iris'] / 2
+        iris_r = fm['globe']['iris'] / 2
         mat, cmat = eye_material(iris_r), cornea_material()
     else:
         mat = eye_material_painted()
@@ -437,9 +448,14 @@ def add_eyes(arm, targets, p):
         if fm:   # (the face model's gaze: its lids were shaped around it)
             from lib import ict
             gz = Vector(ict.gaze(fm['coeffs'], side).tolist())
+            if (fm.get('gaze') or {}).get('straight'):   # (straight ahead: the concept's irises are centred)
+                gz = Vector((0.0, -1.0, 0.0))
             out = (fm.get('gaze') or {}).get('out', 0.0)          # (degrees further outward)
             if out:
                 gz = Matrix.Rotation(np.radians(out) * (1 if side == 'l' else -1), 3, 'Z') @ gz
+            down = (fm.get('gaze') or {}).get('down', 0.0)        # (degrees downward: the concept's irises sit
+            if down:                                              #  ~1 px below its pupils' frame)
+                gz = Matrix.Rotation(np.radians(down), 3, 'X') @ gz
             R = Vector((0, -1, 0)).rotation_difference(gz).to_matrix().to_4x4()
         ob.matrix_world = H @ Matrix.Translation(Vector(c)) @ R
         if co:
