@@ -394,18 +394,19 @@ REF_NOSE_PROFILE = {
 #   290.8 under the iris and the medial white; the darker, skin-tinted band 1-2 px above the rim beside
 #   the iris is tinted white and under-eye shading, not lid (it is absent below the iris, where an opaque
 #   lid shelf could not vanish). Laterally, where the sclera meets the lower lash line.
-# - outer corner (1256.0, 284.35): on the band's line, where the lids meet — the lid runs straight into
+# - outer corner (1256.4, 284.18): on the band's line, where the lids meet — the lid runs straight into
 #   it along the lash line (a corner below the line, as before, hooked the lid down off the lash line).
-#   Its x is uncertain under the wing (1254.3-1256.0); the inner end keeps the eyeball's white reaching
-#   it, 13.4 mm from the pupil. The wing beyond is makeup.
+#   Its x is uncertain under the wing (the review's 1254.3-1256.0); just inside that, the eyeball's
+#   white reaches it (a 13 mm eyeball's edge, 1256.8 — further out left a dark gap), 13.1 mm from the
+#   pupil. The wing beyond is makeup.
 # - inner corner (1289.0, 290.2): where the band ends against the caruncle and the rim.
-REF_EYE_UPPER = [(1256, 284.35), (1257, 284), (1258, 283.5), (1259, 282.95), (1260, 282.4), (1261, 281.96),
+REF_EYE_UPPER = [(1256.4, 284.18), (1257, 284), (1258, 283.5), (1259, 282.95), (1260, 282.4), (1261, 281.96),
                  (1262, 281.55), (1263, 281.18), (1264, 280.84), (1265, 280.55), (1266, 280.31),
                  (1267, 280.12), (1268, 279.98), (1269, 279.9), (1270, 279.87), (1271, 279.9), (1272, 279.99),
                  (1273, 280.13), (1274, 280.33), (1275, 280.59), (1276, 280.9), (1277, 281.27), (1278, 281.7),
                  (1279, 282.11), (1280, 282.59), (1281, 283.16), (1282, 283.89), (1283, 284.77),
                  (1284, 285.69), (1285, 286.62), (1286, 287.55), (1287, 288.43), (1288, 289.32), (1289, 290.2)]
-REF_EYE_LOWER = [(1256, 284.35), (1257, 285.6), (1258, 286.72), (1259, 287.68), (1260, 288.45), (1261, 289),
+REF_EYE_LOWER = [(1256.4, 284.18), (1257, 284.99), (1258, 286.29), (1259, 287.45), (1260, 288.39), (1261, 289),
                  (1262, 289.4), (1263, 289.7), (1264, 289.95), (1265, 290.15), (1266, 290.35), (1267, 290.5),
                  (1268, 290.6), (1269, 290.68), (1270, 290.75), (1271, 290.8), (1272, 290.83), (1274, 290.85),
                  (1276, 290.85), (1278, 290.85), (1280, 290.85), (1282, 290.8), (1284, 290.78), (1286, 290.78),

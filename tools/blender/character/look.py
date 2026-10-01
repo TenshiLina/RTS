@@ -31,8 +31,9 @@ BROW_DENSITY = 1.0               # concept's (linear 0.15, 0.09, 0.07: ~a fifth 
 LASH = (0.012, 0.009, 0.008)
 CONJUNCTIVA = (0.36, 0.19, 0.16, 1.0)   # the caruncle's and the lids' inner rims' pink (the inner corner: the
 # concept's ~0.8 of the skin's value, a little redder; a paler one read as a white glint)
-RECESS = (0.20, 0.18, 0.17, 1.0)        # the outer corner's recess beyond the eyeball: dark and neutral, as the
-# concept's — a real one sits in shadow; pink there, light bouncing in the narrow cavity reddened it to raw red
+RECESS = (0.40, 0.35, 0.33, 1.0)        # the outer corner's conjunctiva beyond the eyeball: the white running on into the
+# corner, as a real eye's bulbar conjunctiva does (shadowed only by the corner itself; dark there read as a
+# gap between eyeball and lids; without scattering it no longer glows raw red)
 RECESS_SKIN = (0.24, 0.13, 0.10, 1.0)   # the skin's own toward it: shadowed skin (the neutral grey on the lit
 # faces at the corner's apex read as a blue-grey smudge)
 IRIS = [(0.0, (0.016, 0.010, 0.006)), (0.35, (0.046, 0.023, 0.010)), (0.8, (0.095, 0.046, 0.020)), (1.0, (0.05, 0.03, 0.02))]   # (its outer
