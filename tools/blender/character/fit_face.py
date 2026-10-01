@@ -77,7 +77,9 @@ EYES = ['fwd']      # the eyes brought forward in their sockets (lib/ict.eye_war
 # (lib/ict.lid_drape: the lids' curvature — the sphere they wrap, which is then the eyeball — its
 # depth, and the canthi's wrap beyond it), fitted to the lids' targets; the eyeball follows the lids
 DRAPE = ['r', 'back', 'wrap']
-GLOBE = {'globe': 0.012, 'seat': 0.0003}   # (the eyeball: 12 mm, the adult average, its front 0.3 mm behind the lids' sphere's)
+GLOBE = {'globe': 0.013, 'seat': 0.0003}   # (the eyeball: 13 mm — the adult's 11-13 mm, its upper end: a 12 mm one ended
+                                            # short of the corners, a dark gap at each in the front view — its front 0.3 mm
+                                            # behind the lids' sphere's; the lids' sphere ~0.7 mm less, 12.3 mm)
 GAZE = {'straight': True, 'down': 4.0}   # (the eyes look ahead, as the concept's — its irises centred between its
                             # corners — and a little down: its irises' centres sit ~0.5 px below its pupils' frame, as
                             # ours do at 4 degrees, the cornea's refraction taking some; the model's neutral scans
@@ -90,9 +92,8 @@ PROFILE_TURN = 10.0
 UNDEREYE = {'flat': 0.5, 'n': 20}   # (lib/ict.undereye: the lower lids' roll and the groove under it relaxed; fixed)
 W_CANTHUS = 1.0  # the lateral canthus' depth behind the upper lid's front (profile): the lids' wrap
 W_LLID = 2.0     # the lower lid's front behind the upper's (profile): the eye's lean
-IRIS = 0.203     # the iris' diameter over the eyes' spacing (the concept's: 14.6 px at 71.85 — its edges at
-# half the limbus' contrast, as ours measure on our render at the concept's scale; 14 px left a white sliver
-# under ours where the concept's iris meets the lower lid)
+IRIS = 0.198     # the iris' diameter over the eyes' spacing (the concept's: ~14.2 px at 71.85 — its limbus' circle
+# fitted in both eyes, the rows the liner's band merges with left out; 11.5 mm on ours)
 # and MakeHuman's neck (below the face model's blend): its length sets where the head sits on the
 # body (the face's own height offset would squeeze the blend into the neck), its width and depth the
 # neck's silhouettes
@@ -105,13 +106,14 @@ JL = JE + len(EARS)
 JB = JL + len(LIDS)
 JF = JB + len(BROW)
 JS = JF + len(EYES)
-LO = np.r_[np.full(K, -3.0), 1.04, -0.03, np.full(len(DETAIL), -1.0), np.full(len(NECK), -1.0), 0.8, 0.8, -25, -30, -0.015, -0.015, 0.75, 0.75, -12.0, -0.3, -0.003, -0.003, 0.0, 0.0, 0.0110, -0.003, -0.6]
-HI = np.r_[np.full(K, 3.0), 1.08, 0.03, np.full(len(DETAIL), 1.0), np.full(len(NECK), 1.0), 1.6, 1.3, 25, 30, 0.015, 0.015, 1.25, 1.25, 12.0, 0.45, 0.003, 0.003, 1.0, 0.008, 0.0128, 0.004, 0.8]
+LO = np.r_[np.full(K, -3.0), 1.04, -0.03, np.full(len(DETAIL), -1.0), np.full(len(NECK), -1.0), 0.8, 0.8, -25, -30, -0.015, -0.015, 0.75, 0.75, -12.0, -0.3, -0.003, -0.003, 0.0, 0.0, GLOBE['globe'] - 0.0007, -0.003, -0.6]
+HI = np.r_[np.full(K, 3.0), 1.08, 0.03, np.full(len(DETAIL), 1.0), np.full(len(NECK), 1.0), 1.6, 1.3, 25, 30, 0.015, 0.015, 1.25, 1.25, 12.0, 0.45, 0.003, 0.003, 1.0, 0.008, GLOBE['globe'] + 0.0005, 0.004, 0.8]
 REGW = np.r_[np.full(K, PRIOR), 0.3 / 0.02, 0.4 / 0.01, np.full(len(DETAIL), 0.3 / 1.0), np.full(len(NECK), 0.3),
              0.5 / 0.3, 0.5 / 0.3, 0.5 / 30, 0.5 / 30, 0.5 / 0.01, 0.5 / 0.01, 0.3 / 0.1, 0.3 / 0.1, 0.3 / 5.0, 0.3 / 0.5, 0.3 / 0.006, 0.3 / 0.006, 0.3 / 1.0, 0.3 / 0.005,
              0.0, 0.3 / 0.003, 0.3 / 0.5]   # (scale: toward the body fit's 1.06 — every target scales with the eyes' spacing, so a free scale
              # games them; height: 1 cm per cm; lids, neck: 0.3 cm per unit; ears: mild)
-X0 = np.r_[np.zeros(K), 1.06, 0.0, np.zeros(len(DETAIL)), np.zeros(len(NECK)), 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0120, 0.0, 0.0]   # (the neck's: set to the saved values below)
+X0 = np.r_[np.zeros(K), 1.06, 0.0, np.zeros(len(DETAIL)), np.zeros(len(NECK)), 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, GLOBE['globe'] - 0.0007, 0.0, 0.0]   # (the neck's: set to the saved values below;
+# the lids' sphere at least 0.7 mm under the eyeball's radius: a flatter eyeball than its lids pokes through at the corners)
 
 P = woman.params()
 P['modifiers'] = {k: (0.0 if k.split('/')[0] in FACE_GROUPS else v) for k, v in P['modifiers'].items()}

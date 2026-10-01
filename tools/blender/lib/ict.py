@@ -740,7 +740,7 @@ def margin_warp(V, prm):
     and the cheek stay), the lashes with their roots, the lid joints with the skin; on the eyeball, the
     lids slide over it (their distance from its centre kept). The fitted warps shape the lids with a
     few broad parameters, which bent the margin where their falloffs overlapped; this lays it along
-    the trace. Both sides, mirrored."""
+    the trace; 'relax': the outer corner's skin smoothed (steps). Both sides, mirrored."""
     if not prm or not prm.get('x'):
         return V
     from scipy.spatial import cKDTree
@@ -799,7 +799,47 @@ def margin_warp(V, prm):
             if len(gi):
                 V[gi] += (newP - P)[k]
         V[near] = newP
+        # the outer corner relaxed ('relax' steps): its skin was folded in the model's registration, and
+        # laying the corner along the lash line folded it into a pit beside the canthus — the skin within
+        # 2 mm of the corner (the margins' lateral ends, front view) smoothed, fading out by 4 mm, kept in
+        # front of the eyeball
+        n = int(prm.get('relax', 0))
+        if n:
+            k0 = (V[up][np.argmax(sg * V[up][:, 0])] + V[lo][np.argmax(sg * V[lo][:, 0])]) / 2
+            _relax(V, k0, c, rad, n)
     return V
+
+
+def _relax(V, k0, c, rad, n, r0=0.002, r1=0.004):
+    """Laplacian smoothing (in place) of the body's skin around the point k0 (front-view distance:
+    full within r0, none from r1, and not the socket's back), n steps, kept in front of the eyeball
+    (centre c, radius rad)."""
+    global _edges
+    if _edges is None:
+        e = set()
+        for f in mh.load_base()['F']:
+            for a, b in zip(f, f[1:] + f[:1]):
+                e.add((a, b) if a < b else (b, a))
+        _edges = np.array(sorted(e), dtype=np.int64)
+    B = V[:mh.BODY_VERTS]
+    d = np.hypot(B[:, 0] - k0[0], B[:, 2] - k0[2])
+    t = np.clip((d - r0) / (r1 - r0), 0, 1)
+    w = (1 - t * t * (3 - 2 * t)) * ((B[:, 1] - c[1]) < 0.012)
+    sel = w > 0
+    E = _edges[sel[_edges[:, 0]] | sel[_edges[:, 1]]]
+    X = B.copy()
+    for _ in range(n):
+        acc = np.zeros_like(X); cnt = np.zeros(len(X))
+        np.add.at(acc, E[:, 0], X[E[:, 1]]); np.add.at(acc, E[:, 1], X[E[:, 0]])
+        np.add.at(cnt, E[:, 0], 1); np.add.at(cnt, E[:, 1], 1)
+        avg = np.where(cnt[:, None] > 0, acc / np.maximum(cnt, 1)[:, None], X)
+        X = X + 0.5 * w[:, None] * (avg - X)
+        q = X[sel] - c                                     # (in front of the eyeball, 0.3 mm clear)
+        r = np.linalg.norm(q, axis=1)
+        ins = (r < rad + 0.0003) & (q[:, 1] < 0)
+        q[ins] *= ((rad + 0.0003) / np.maximum(r[ins], 1e-9))[:, None]
+        X[sel] = c + q
+    V[:mh.BODY_VERTS] = X
 
 _edges = None
 

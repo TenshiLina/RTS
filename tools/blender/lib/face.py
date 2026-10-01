@@ -383,37 +383,33 @@ REF_NOSE_PROFILE = {
 # ---- feature outlines (front close-up): the lips' vermilion and the eyes' opening
 # The concept's eye opening (sheet px; the figure's right eye, seen on the left — mirrored to ours by
 # symmetry): the lid margins, the anatomy under her dark eye makeup (the look paints its own). Both eyes
-# measured, the other mirrored about the midline, and averaged (they differ by up to ~1 px: the head is
-# not quite square to the view). (Provisional: trace C2, under adversarial review.)
-# - upper: the liner's band is a smooth arch whose darkest line (the lash line under the liner) runs
-#   ~1.1 px above where the band gives way to the eyeball (sclera or iris) — at every column, over the
-#   white and over the iris alike (median 1.08, IQR 0.96-1.17). The margin is that lower edge: each
-#   column's crossing halfway from the band's darkest to the eyeball's level just below it, both eyes
-#   averaged, a robust degree-5 fit (0.16 px rms; convex throughout, no inflection; its peak at 1270.25,
-#   279.86, just beside the pupil). Over the iris the catchlights' tops (~280.3-280.9) bound it too.
-#   The previous trace took the band's quarter-height (a quarter of the way up from its darkest) and
-#   then raised the margin over the iris 0.6 px: it cut diagonally through the liner's soft gradient
-#   (below its darkest line beside the eye, above it over the iris), which bent the lid on the outside
-#   and blunted the outer corner.
-# - lower: where the eyeball meets the lid's rim — over the sclera halfway down to the rim's darker line
-#   below it, over the iris halfway up from the iris to the rim's level (the iris is darker than the
-#   rim); a robust degree-4 fit, the columns at the iris' edges left out.
-# - corners as before: the outer (1256.6, 285.5), ~13 mm out from the pupil, where the white tapers
-#   off into the shadowed recess under the liner's wing (the wing runs on, up and out: makeup); the
-#   inner (1288.5, 289.5), where the band meets the rim beside the caruncle. The ends (within ~1.5 px
-#   of the corners) blend into them by hand.
-REF_EYE_UPPER = [(1256.6, 285.5), (1258, 283.92), (1259, 283.23), (1260, 282.63), (1261, 282.09),
-                 (1262, 281.63), (1263, 281.22), (1264, 280.87), (1265, 280.58), (1266, 280.34),
-                 (1267, 280.14), (1268, 280), (1269, 279.91), (1270, 279.86), (1271, 279.87), (1272, 279.94),
-                 (1273, 280.06), (1274, 280.23), (1275, 280.47), (1276, 280.77), (1277, 281.13),
-                 (1278, 281.57), (1279, 282.07), (1280, 282.64), (1281, 283.28), (1282, 284), (1283, 284.8),
-                 (1284, 285.66), (1285, 286.6), (1286, 287.61), (1287, 288.55), (1288.5, 289.5)]
-REF_EYE_LOWER = [(1256.6, 285.5), (1258, 287.2), (1260, 288.7), (1261, 289.18), (1262, 289.57), (1263, 289.89),
-                 (1264, 290.15), (1265, 290.34), (1266, 290.47), (1267, 290.56), (1268, 290.6), (1269, 290.61),
-                 (1270, 290.58), (1271, 290.52), (1272, 290.44), (1273, 290.33), (1274, 290.21),
-                 (1275, 290.08), (1276, 289.94), (1277, 289.79), (1278, 289.63), (1279, 289.48),
-                 (1280, 289.32), (1281, 289.16), (1282, 289), (1283, 288.84), (1285, 288.75), (1287, 289.05),
-                 (1288.5, 289.5)]
+# measured, aligned on their irises' centres (the mirrored one sits ~1.1 px further out) and averaged —
+# the frame of REF_FRONT's pupil. Traced, then corrected by an adversarial review (trace F).
+# - upper: the liner's band is a smooth arch; its darkest line (the lash line) runs ~1 px above where
+#   the band gives way to the eyeball, over the white and the iris alike. The margin is that line plus
+#   1.0 px (a robust fit to both eyes' band cores: rms 0.29 px, no kink), clearing the catchlights'
+#   tops (280.4) over the iris. A trace through the liner's soft gradient (a quarter of the way up from
+#   its darkest, then raised over the iris) cut across the band, which bent the lid on the outside.
+# - lower: the iris is whole — its lower limbus (290.8-291.0) meets the lid's lit rim, whose top runs at
+#   290.8 under the iris and the medial white; the darker, skin-tinted band 1-2 px above the rim beside
+#   the iris is tinted white and under-eye shading, not lid (it is absent below the iris, where an opaque
+#   lid shelf could not vanish). Laterally, where the sclera meets the lower lash line.
+# - outer corner (1256.0, 284.35): on the band's line, where the lids meet — the lid runs straight into
+#   it along the lash line (a corner below the line, as before, hooked the lid down off the lash line).
+#   Its x is uncertain under the wing (1254.3-1256.0); the inner end keeps the eyeball's white reaching
+#   it, 13.4 mm from the pupil. The wing beyond is makeup.
+# - inner corner (1289.0, 290.2): where the band ends against the caruncle and the rim.
+REF_EYE_UPPER = [(1256, 284.35), (1257, 284), (1258, 283.5), (1259, 282.95), (1260, 282.4), (1261, 281.96),
+                 (1262, 281.55), (1263, 281.18), (1264, 280.84), (1265, 280.55), (1266, 280.31),
+                 (1267, 280.12), (1268, 279.98), (1269, 279.9), (1270, 279.87), (1271, 279.9), (1272, 279.99),
+                 (1273, 280.13), (1274, 280.33), (1275, 280.59), (1276, 280.9), (1277, 281.27), (1278, 281.7),
+                 (1279, 282.11), (1280, 282.59), (1281, 283.16), (1282, 283.89), (1283, 284.77),
+                 (1284, 285.69), (1285, 286.62), (1286, 287.55), (1287, 288.43), (1288, 289.32), (1289, 290.2)]
+REF_EYE_LOWER = [(1256, 284.35), (1257, 285.6), (1258, 286.72), (1259, 287.68), (1260, 288.45), (1261, 289),
+                 (1262, 289.4), (1263, 289.7), (1264, 289.95), (1265, 290.15), (1266, 290.35), (1267, 290.5),
+                 (1268, 290.6), (1269, 290.68), (1270, 290.75), (1271, 290.8), (1272, 290.83), (1274, 290.85),
+                 (1276, 290.85), (1278, 290.85), (1280, 290.85), (1282, 290.8), (1284, 290.78), (1286, 290.78),
+                 (1287, 290.72), (1288, 290.55), (1289, 290.2)]
 # The concept's lips, traced (sheet px; u = px from the mouth's midline 1309.3, both halves folded:
 # they agree within ~1 px): the vermilion border's top (upper lip) and bottom (lower lip) edges,
 # corner to corner. The corners are the ends of the dark mouth line (1285.2 and 1333.4, row 359.5),

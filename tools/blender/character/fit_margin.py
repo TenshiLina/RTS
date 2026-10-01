@@ -16,6 +16,7 @@ from lib import face, ict
 
 path = next((a for a in sys.argv[1:] if a.endswith('.json')), os.path.join(BASE, 'character', 'woman.json'))
 iters = int(sys.argv[sys.argv.index('--iters') + 1]) if '--iters' in sys.argv else 8
+RELAX = 8    # (the outer corner's skin smoothed: lib/ict.margin_warp 'relax')
 woman.PARAMS = path
 p = woman.params()
 p['face_model'].pop('margin', None)
@@ -45,7 +46,7 @@ def smooth_at(r):
 
 best = None
 for it in range(iters + 1):
-    V = ict.margin_warp(V0, {'x': list(xs), 'up': list(du), 'lo': list(dl)}) if it else V0
+    V = ict.margin_warp(V0, {'x': list(xs), 'up': list(du), 'lo': list(dl), 'relax': RELAX}) if it else V0
     ot, ob = face.opening(V, ex)
     yu, yl = zp - ot / s, zp - ob / s                      # (ours, sheet rows)
     ru, rl = yu - tu, yl - tl                              # (+: ours lower on the sheet)
@@ -63,6 +64,6 @@ for it in range(iters + 1):
 _, du, dl = best
 j = json.load(open(path))
 j['face_model']['margin'] = {'x': [round(float(v), 6) for v in xs], 'up': [round(float(v), 6) for v in du],
-                             'lo': [round(float(v), 6) for v in dl]}
+                             'lo': [round(float(v), 6) for v in dl], 'relax': RELAX}
 json.dump(j, open(path, 'w'), indent=1)
 print(f'margin profile written to {path} (best rms {best[0]:.3f} px)')
