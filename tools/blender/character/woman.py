@@ -78,13 +78,19 @@ def face_regional(p):
 def face_morph(p):
     """The head from the face model (lib/ict.py: p['face_model'] = {'coeffs', 'scale', 'dz',
     'ears', 'detail'}), as a function of all the vertices — or None (MakeHuman's own head).
-    'ears', 'lids', 'brow', 'eyes', 'drape', 'undereye': the ears' size and placement, the eyes' openings, the
-    brow ridge's flattening, the eyes' depth, the lids draped over the eyeball that is theirs, the skin under the lower lids smoothed (ict.
-    ear_warp, lid_warp, brow_warp, eye_warp, lid_drape, undereye); 'margin': the lid margins laid along the
-    trace, last (ict.margin_warp, solved by character/fit_margin.py); 'globe': {'iris': m}, the built eye's iris
+    'ears', 'lids', 'brow', 'eyes', 'drape': the ears' size and placement, the eyes' openings, the
+    brow ridge's flattening, the eyes' depth, the lids draped over the eyeball that is theirs (ict.
+    ear_warp, lid_warp, brow_warp, eye_warp, lid_drape); 'margin': the lid margins laid along the
+    trace (ict.margin_warp, solved by character/fit_margin.py); 'undereye', 'uplid': the skin under the lower
+    lids and over the upper ones set flat from the margins (ict.undereye, ict.uplid; superseded by 'fill');
+    'fill', 'corner_relax', 'crease': the skin around the lids made smooth (the lower lid toward a chord to the
+    cheek), the outer corners' collar relaxed, the upper lid's crease along the concept's, last (ict.lid_fill,
+    ict.corner_relax, ict.lid_crease); 'globe': {'iris': m}, the built eye's iris
     (add_eyes); 'symmetric': the model's face mirrored from its left side. 'detail': a
     few MakeHuman feature modifiers applied on the model's face (the lids' size, where the concept
-    is beyond the real faces the model spans), {'group/l-name': value} for both sides."""
+    is beyond the real faces the model spans), {'group/l-name': value} for both sides; 'eyefold_weight': the
+    eyefold targets weighted along the lid (_eyefold_weight: their groove tapered toward the nose, the flare
+    past the outer corner eased)."""
     fm = p.get('face_model')
     if not fm:
         return None
@@ -106,14 +112,41 @@ def face_morph(p):
         V = ict.brow_warp(V, fm.get('brow'))
         V = ict.eye_warp(V, fm.get('eyes'))
         V = ict.lid_drape(V, fm.get('drape'))
-        V = ict.undereye(V, fm.get('undereye'))
         for name, w in tw.items():
             if w:
                 i, d = mh.read_target(os.path.join(mh.MH, 'targets', name + '.target'))
-                V[i] += w * mh.delta_to_blender(d, s)
-        V = ict.margin_warp(V, fm.get('margin'))      # (last: the margins laid along the trace)
+                dV = w * mh.delta_to_blender(d, s)
+                if 'eyefold' in name and fm.get('eyefold_weight'):
+                    dV = dV * _eyefold_weight(V[i], name, V, fm['eyefold_weight'])[:, None]
+                V[i] += dV
+        V = ict.margin_warp(V, fm.get('margin'))      # (the margins laid along the trace)
+        V = ict.undereye(V, fm.get('undereye'))       # (then the lids' skin set from them: from the margins as
+        V = ict.uplid(V, fm.get('uplid'))             # laid, the chords' anchors where they end up)
+        V = ict.lid_fill(V, fm.get('fill'))           # (the skin around the lids made smooth, its collar at
+        V = ict.corner_relax(V, fm.get('corner_relax'))   # the outer corners relaxed,
+        V = ict.lid_crease(V, fm.get('crease'))       # then the upper lid's crease)
         return neck_shift(V, p.get('neck_shift'))
     return morph
+
+
+def _eyefold_weight(P, name, V, prm):
+    """Per-vertex weights for a MakeHuman eyefold target ('eyes/l-…' or 'eyes/r-…') along its lid, by the
+    distance across from the pupil (m, lateral +): its groove runs level while the concept's crease follows
+    the margin down toward the nose, and it flares past the outer corner. prm: {'medial': (a, b, w) — 1
+    lateral of a, w medial of b; 'lateral': (a, b, w) — 1 medial of a, w lateral of b}."""
+    from lib import face
+    sd = 'r' if '/r-' in name else 'l'
+    sg = 1.0 if sd == 'l' else -1.0
+    lx = sg * (P[:, 0] - face.eye_centre(V, sd)[0])
+    sm = lambda t: t * t * (3 - 2 * t)
+    w = np.ones(len(P))
+    if prm.get('medial'):
+        a, b, wm = prm['medial']
+        w *= 1 - (1 - wm) * sm(np.clip((a - lx) / (a - b), 0, 1))
+    if prm.get('lateral'):
+        a, b, wl = prm['lateral']
+        w *= 1 - (1 - wl) * sm(np.clip((lx - a) / (b - a), 0, 1))
+    return w
 
 
 def neck_shift(V, prm):
@@ -382,6 +415,74 @@ def cornea_material():
     b.inputs['IOR'].default_value = 1.376
     b.inputs['Transmission Weight'].default_value = 1.0
     return mat
+
+
+def subdivide(body, arm, p, levels=2):
+    """The body subdivided for a close look ('levels'), and the detail the cage is too coarse to carry
+    added on the subdivided surface (the upper lid's crease, face_model 'crease' {'mode': 'detail'}: its
+    lines are a few tenths of a millimetre wide, the cage's rows there 1-4 mm apart; in the game's asset it
+    is the normal map's). Returns the subdivision modifier."""
+    s_ = body.modifiers.new('s', 'SUBSURF'); s_.levels = s_.render_levels = levels
+    cd = (p.get('face_model') or {}).get('crease')
+    if cd and cd.get('mode') == 'detail':
+        _crease_detail(body, arm, p, cd)
+    return s_
+
+
+def _crease_detail(body, arm, p, prm):
+    """The upper lid's crease as the eyelid's own fold, on the subdivided surface: a thin invagination
+    along lib/face.REF_EYE_CREASE where the pretarsal platform meets the passive preseptal skin, and that
+    skin's lip overhanging it just above (the fold) — 'depth' (m) at the crease over 'below' / 'above'
+    (m: Gaussian half-widths; the fold's side the steeper), the lip 'overhang' (m, out) at 'lip_at' above
+    it over 'lip_w'; weighted along it by REF_EYE_CREASE_WEIGHT ('level_from', 'tail': lib/ict). A Displace
+    modifier along the normals, from a front-projected map in the head's rest frame; the front skin of
+    the upper lids only (a vertex group)."""
+    from lib import ict, face
+    from mathutils import Matrix
+    V = rest_vertices(p)
+    el, er = face.eye_centre(V, 'l'), face.eye_centre(V, 'r')
+    s, zp, cx = face._front_scale((el[0] - er[0]) * 100)
+    T, Wt = ict._crease_curve(prm)
+    dep, wb, wa = float(prm['depth']), float(prm.get('below', 0.0003)), float(prm.get('above', 0.00018))
+    ov, la, lw = float(prm.get('overhang', 0.0)), float(prm.get('lip_at', 0.0005)), float(prm.get('lip_w', 0.0004))
+    st = 0.0001
+    x0, x1 = -0.055, 0.055
+    z0, z1 = el[2] - 0.010, el[2] + 0.020
+    gx = np.arange(x0, x1 + st / 2, st); gz = np.arange(z0, z1 + st / 2, st)
+    X, Z = np.meshgrid(gx, gz)                                   # (rows z, columns x)
+    tx = (cx - T[:, 0]) * s / 100; tz = el[2] + (zp - T[:, 1]) * s / 100
+    o = np.argsort(tx)
+    zc = np.interp(np.abs(X), tx[o], tz[o])
+    col = cx - np.abs(X) * 100 / s
+    w = np.interp(col, Wt[:, 0], Wt[:, 1], left=0.0, right=0.0)
+    fd = prm.get('fade')
+    if fd:   # (fading out toward the outer corner over these sheet columns: none, full)
+        tf = np.clip((col - fd[0]) / (fd[1] - fd[0]), 0, 1); w = w * tf * tf * (3 - 2 * tf)
+    t = Z - zc
+    d = -dep * np.where(t < 0, np.exp(-(t / wb) ** 2), np.exp(-(t / wa) ** 2)) + ov * np.exp(-((t - la) / lw) ** 2)
+    d *= w
+    scale = 0.002
+    img = bpy.data.images.new('crease_detail', len(gx), len(gz), float_buffer=True)
+    px = np.zeros((len(gz), len(gx), 4), np.float32)
+    px[..., :3] = (0.5 + d / scale)[..., None]; px[..., 3] = 1
+    img.pixels.foreach_set(px.ravel())
+    tex = bpy.data.textures.new('crease_detail', 'IMAGE'); tex.image = img; tex.extension = 'EXTEND'   # (its border neutral)
+    # the map's frame: local (u, v) in [-1, 1] over the grid's rest (x, z), carried by the head's pose
+    H = head_pose(arm)
+    hx, hz = (x1 - x0) / 2, (z1 - z0) / 2
+    M = np.array([[hx, 0, 0, (x0 + x1) / 2], [0, 0, 1, 0], [0, hz, 0, (z0 + z1) / 2], [0, 0, 0, 1]])
+    emp = bpy.data.objects.new('crease_frame', None); bpy.context.scene.collection.objects.link(emp)
+    emp.matrix_world = Matrix((H @ M).tolist())
+    # (the front skin of the upper lids: in front of the eyes, within the map)
+    vg = body.vertex_groups.new(name='crease_detail')
+    Vw = np.array([v.co for v in body.data.vertices])
+    Vr = (Vw - H[:3, 3]) @ np.linalg.inv(H[:3, :3]).T
+    near = np.where((np.abs(np.abs(Vr[:, 0]) - abs(el[0])) < 0.025) & (Vr[:, 2] > z0) & (Vr[:, 2] < z1) &
+                    (Vr[:, 1] < el[1] - 0.004))[0]
+    vg.add(near.tolist(), 1.0, 'REPLACE')
+    m = body.modifiers.new('crease_detail', 'DISPLACE')
+    m.texture = tex; m.texture_coords = 'OBJECT'; m.texture_coords_object = emp
+    m.direction = 'NORMAL'; m.mid_level = 0.5; m.strength = scale; m.vertex_group = 'crease_detail'
 
 
 def head_pose(arm):

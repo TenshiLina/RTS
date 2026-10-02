@@ -31,9 +31,10 @@ BROW_DENSITY = 1.0               # concept's (linear 0.15, 0.09, 0.07: ~a fifth 
 LASH = (0.012, 0.009, 0.008)
 CONJUNCTIVA = (0.36, 0.19, 0.16, 1.0)   # the caruncle's and the lids' inner rims' pink (the inner corner: the
 # concept's ~0.8 of the skin's value, a little redder; a paler one read as a white glint)
-RECESS = (0.40, 0.35, 0.33, 1.0)        # the outer corner's conjunctiva beyond the eyeball: the white running on into the
-# corner, as a real eye's bulbar conjunctiva does (shadowed only by the corner itself; dark there read as a
-# gap between eyeball and lids; without scattering it no longer glows raw red)
+CARUNCLE = (0.44, 0.29, 0.25, 1.0)      # the caruncle's, lighter: the medial 2.5 mm of the opening (in the
+# corner's slit the conjunctiva's read as a dark-red dot, where the concept's is a pink wedge)
+RECESS = (0.20, 0.18, 0.17, 1.0)        # the outer corner's recess beyond the eyeball: dark and neutral, as the
+# concept's — a real one sits in shadow; pink there, light bouncing in the narrow cavity reddened it to raw red
 RECESS_SKIN = (0.24, 0.13, 0.10, 1.0)   # the skin's own toward it: shadowed skin (the neutral grey on the lit
 # faces at the corner's apex read as a blue-grey smudge)
 IRIS = [(0.0, (0.016, 0.010, 0.006)), (0.35, (0.046, 0.023, 0.010)), (0.8, (0.095, 0.046, 0.020)), (1.0, (0.05, 0.03, 0.02))]   # (its outer
@@ -74,6 +75,11 @@ LINER_TH = [(1256.5, 3.2), (1260, 3.2), (1262, 3.0), (1264, 2.5), (1268, 2.8), (
 # centre (~45 % darker than the skin there), gone by 1277: the inner third has a bright rim instead
 LOWER_LINE = 0.35   # its strength (of the liner's)
 LOWER_LINE_X = (1256.5, 1272.0, 1277.0)
+# and the shadow in the upper lid's crease (the concept's crease line reads ~0.7 of the skin's value, a
+# little more saturated — shadow and eyeshadow; the geometry's crease is shallower by design): a soft line
+# along lib/face.REF_EYE_CREASE and a fainter band over it
+CREASE_SHADE = (1.05, 1.3, 0.25, 2.5)   # (the line's strength, its half-width px; the band's strength, height px)
+CREASE_COLOUR = (0.22, 0.10, 0.07)
 # the concept's eye makeup (the liner and the lower lash line) is off unless RTS_MAKEUP=1: reviews of the
 # lids' shape judge the geometry, not paint (the textured look will carry its own makeup)
 MAKEUP = os.environ.get('RTS_MAKEUP') == '1'
@@ -120,6 +126,24 @@ def brow_mask(ipd_cm):
     if not MAKEUP:
         liner = np.zeros_like(liner)
     return brow, liner
+
+
+def crease_mask(ipd_cm):
+    """The crease's shadow (CREASE_SHADE: make-up, 0..1) on GRID, symmetric; none unless RTS_MAKEUP=1."""
+    s, zp, cx = face._front_scale(ipd_cm)
+    xs = np.arange(GRID['x0'], GRID['x1'], GRID['res'])
+    zs = np.arange(GRID['z0'], GRID['z1'], GRID['res'])
+    XX, ZZ = np.meshgrid(xs, zs)
+    px, row = cx - np.abs(XX) / s, zp - ZZ / s
+    if not MAKEUP:
+        return np.zeros_like(px)
+    T, W = np.array(face.REF_EYE_CREASE), np.array(face.REF_EYE_CREASE_WEIGHT)
+    c = np.interp(px, T[:, 0], T[:, 1])
+    w = np.interp(px, W[:, 0], W[:, 1], left=0.0, right=0.0)
+    a, hw, b, bh = CREASE_SHADE
+    line = a * np.exp(-((row - c) / hw) ** 2)
+    band = b * np.clip((c - row) / 0.8, 0, 1) * np.clip(1 - (c - row) / bh, 0, 1)
+    return np.maximum(line, band) * w
 
 
 REF_CORNER_ROW = 285.0
@@ -244,8 +268,13 @@ def _projection_material(name, grid_img, eye_z, lip_attr):
     mix_b = nt.nodes.new('ShaderNodeMix'); mix_b.data_type = 'RGBA'
     nt.links.new(mix_l.outputs['Result'], mix_b.inputs['A']); mix_b.inputs['B'].default_value = (*BROW, 1)
     nt.links.new(brow.outputs[0], mix_b.inputs['Factor'])
+    crs = nt.nodes.new('ShaderNodeMath'); crs.operation = 'MULTIPLY'   # (the crease's shadow: make-up)
+    nt.links.new(sepc.outputs[2], crs.inputs[0]); nt.links.new(face_fwd.outputs['Result'], crs.inputs[1])
+    mix_s = nt.nodes.new('ShaderNodeMix'); mix_s.data_type = 'RGBA'
+    nt.links.new(mix_b.outputs['Result'], mix_s.inputs['A']); mix_s.inputs['B'].default_value = (*CREASE_COLOUR, 1)
+    nt.links.new(crs.outputs[0], mix_s.inputs['Factor'])
     mix_e = nt.nodes.new('ShaderNodeMix'); mix_e.data_type = 'RGBA'
-    nt.links.new(mix_b.outputs['Result'], mix_e.inputs['A']); mix_e.inputs['B'].default_value = (*LASH, 1)
+    nt.links.new(mix_s.outputs['Result'], mix_e.inputs['A']); mix_e.inputs['B'].default_value = (*LASH, 1)
     nt.links.new(liner.outputs[0], mix_e.inputs['Factor'])
     # the outer corners' recess (character/look._conjunctiva's weight): dark, and no scattering
     rc = nt.nodes.new('ShaderNodeAttribute'); rc.attribute_name = 'recess'
@@ -280,16 +309,21 @@ def _lashes(p, arm):
     for side in ('l', 'r'):
         c = face.eye_centre(V, side)                   # (the pupil's frame)
         # (upper, lower): count, length at the inner corner and the outer, the tip's curl (up +),
-        # the base direction's forward / outward / up mix
-        for lid, (n, L0, L1, curl, mix) in zip(face.lash_roots(V, side),
-                                              ((140, 0.0022, 0.0075, 0.45, (0.82, 0.22, 0.02)),
-                                               (28, 0.0007, 0.0018, -0.10, (0.70, 0.30, -0.25)))):
+        # the base direction's forward / outward / up mix, the sideways splay, the span of the margin
+        # (inner, outer fraction), the outer end's taper (the lower lashes: a dense, short line, longest
+        # across the outer third and tapering into the corner — sparse long ones there read as whiskers)
+        for li, (lid, (n, L0, L1, curl, mix, splay, span, taper)) in enumerate(zip(face.lash_roots(V, side),
+                                              ((140, 0.0022, 0.0075, 0.45, (0.82, 0.22, 0.02), 0.12, (0.0, 1.0), 0.0),
+                                               (60, 0.0005, 0.0014, -0.10, (0.74, 0.20, -0.25), 0.06, (0.03, 0.94), 0.6)))):
+            # (the lower lashes their own random stream; the upper ones' draws as before the lower line
+            # was redone — 28 lashes' worth skipped — so the upper lashes stay as they were)
+            r_ = rng if li == 0 else np.random.default_rng(100 + (side == 'r'))
             P = V[lid]
             P = P[np.argsort(P[:, 0])]
             seg = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))]
             inner_first = abs(P[0, 0]) < abs(P[-1, 0])
             for k in range(n):
-                t = (k + rng.uniform(0.1, 0.9)) / n                  # along the margin, inner → outer
+                t = span[0] + (span[1] - span[0]) * (k + r_.uniform(0.1, 0.9)) / n   # along the margin, inner → outer
                 a = (t if inner_first else 1 - t) * seg[-1]
                 m = np.array([np.interp(a, seg, P[:, j]) for j in range(3)])
                 tang = np.array([np.interp(min(a + 1e-4, seg[-1]), seg, P[:, j]) - np.interp(max(a - 1e-4, 0), seg, P[:, j]) for j in range(3)])
@@ -298,10 +332,11 @@ def _lashes(p, arm):
                 o /= max(np.linalg.norm(o), 1e-9)
                 m = m + 0.0009 * fwd + 0.0002 * o                      # (the lid margin's front edge)
                 tt = t * t * (3 - 2 * t)
-                L = (L0 + (L1 - L0) * tt) * rng.uniform(0.75, 1.1)
-                d0 = mix[0] * fwd + mix[1] * o + mix[2] * up + rng.normal(0, 0.12) * tang   # (splayed a little)
+                te = np.clip((t - 0.8) / 0.2, 0, 1)
+                L = (L0 + (L1 - L0) * tt) * (1 - taper * te * te * (3 - 2 * te)) * r_.uniform(0.75, 1.1)
+                d0 = mix[0] * fwd + mix[1] * o + mix[2] * up + r_.normal(0, splay) * tang   # (splayed a little)
                 d0 /= np.linalg.norm(d0)
-                bend = curl * rng.uniform(0.7, 1.2)
+                bend = curl * r_.uniform(0.7, 1.2)
                 base = len(verts)
                 for i, sv in enumerate(np.linspace(0, 1, 6)):
                     q = m + L * (sv * d0 + sv * sv * bend * up + sv * sv * 0.1 * o)
@@ -310,6 +345,9 @@ def _lashes(p, arm):
                     if i:
                         b = base + 2 * i
                         faces.append((b - 2, b - 1, b + 1, b))
+            if li == 1:
+                for _ in range(28):
+                    rng.uniform(); rng.uniform(); rng.normal(); rng.uniform()
     me = bpy.data.meshes.new('lashes')
     me.from_pydata([tuple(v) for v in verts], [], faces)
     ob = bpy.data.objects.new('lashes', me)
@@ -370,7 +408,15 @@ def _conjunctiva(body, Vw, p, arm):
         mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.name = 'RECESS_MIX'
         nt.links.new(fr.outputs['Result'], mx.inputs['Factor'])
         mx.inputs[6].default_value, mx.inputs[7].default_value = CONJUNCTIVA, RECESS
-        nt.links.new(mx.outputs[2], b.inputs['Base Color'])
+        # toward the inner corners (within 0.80-0.92 of the eyeball's radius in from its centre: the
+        # opening's medial 2.5 mm) the caruncle
+        fc = nt.nodes.new('ShaderNodeMapRange'); fc.clamp = True; nt.links.new(ab.outputs[0], fc.inputs['Value'])
+        fc.inputs['From Min'].default_value, fc.inputs['From Max'].default_value = cx - 0.92 * r, cx - 0.80 * r
+        fc.inputs['To Min'].default_value, fc.inputs['To Max'].default_value = 1.0, 0.0
+        mc = nt.nodes.new('ShaderNodeMix'); mc.data_type = 'RGBA'; mc.name = 'CARUNCLE_MIX'
+        nt.links.new(fc.outputs['Result'], mc.inputs['Factor'])
+        nt.links.new(mx.outputs[2], mc.inputs[6]); mc.inputs[7].default_value = CARUNCLE
+        nt.links.new(mc.outputs[2], b.inputs['Base Color'])
     near = np.zeros(len(Vw), bool)
     for side in ('l', 'r'):
         up, lo = face.lash_roots(V, side)
@@ -418,6 +464,7 @@ def apply(body, arm, p):
     px = np.zeros((m.shape[0], m.shape[1], 4), np.float32)
     px[..., 0] = m
     px[..., 1] = liner
+    px[..., 2] = crease_mask(ipd)
     px[..., 3] = 1
     img.pixels.foreach_set(px.ravel())
     # lips, as a vertex attribute (the body's rest mesh is the posed, sculpted shape)
